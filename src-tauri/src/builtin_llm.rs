@@ -1,0 +1,1763 @@
+use futures_util::StreamExt;
+use libloading::Library;
+use serde::{Deserialize, Serialize};
+use std::net::{TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command};
+use std::sync::{Mutex, atomic::{AtomicBool, Ordering}};
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::ipc::Channel;
+use sysinfo::System;
+
+use crate::AppState;
+
+#[derive(Debug, Serialize)]
+pub struct BuiltinLlmStatus {
+    #[serde(rename = "runtimeInstalled")]
+    pub runtime_installed: bool,
+    #[serde(rename = "modelInstalled")]
+    pub model_installed: bool,
+    #[serde(rename = "modelId")]
+    pub model_id: String,
+    #[serde(rename = "runningModelId")]
+    pub running_model_id: Option<String>,
+    #[serde(rename = "runningThisModel")]
+    pub running_this_model: bool,
+    pub running: bool,
+    #[serde(rename = "baseUrl")]
+    pub base_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BuiltinLlmOptions {
+    #[serde(rename = "modelId")]
+    pub model_id: Option<String>,
+    pub mode: Option<String>,
+    #[serde(rename = "computeMode")]
+    pub compute_mode: Option<String>,
+    #[serde(rename = "gpuBackend")]
+    pub gpu_backend: Option<String>,
+    #[serde(rename = "gpuLayers")]
+    pub gpu_layers: Option<i32>,
+    #[serde(rename = "cudaVersion")]
+    pub cuda_version: Option<String>,
+    #[serde(rename = "modelUrl")]
+    pub model_url: Option<String>,
+    #[serde(rename = "runtimeUrl")]
+    pub runtime_url: Option<String>,
+    #[serde(rename = "cudartUrl")]
+    pub cudart_url: Option<String>,
+}
+
+pub struct BuiltinLlmManager {
+    child: Mutex<Option<Child>>,
+    port: Mutex<Option<u16>>,
+    model_path: Mutex<Option<PathBuf>>,
+    compute_mode: Mutex<Option<String>>,
+    gpu_backend: Mutex<Option<String>>,
+    gpu_layers: Mutex<Option<i32>>,
+    cuda_version: Mutex<Option<String>>,
+}
+
+impl BuiltinLlmManager {
+    pub fn new() -> Self {
+        Self {
+            child: Mutex::new(None),
+            port: Mutex::new(None),
+            model_path: Mutex::new(None),
+            compute_mode: Mutex::new(None),
+            gpu_backend: Mutex::new(None),
+            gpu_layers: Mutex::new(None),
+            cuda_version: Mutex::new(None),
+        }
+    }
+
+    fn is_running(&self) -> bool {
+        let mut guard = self.child.lock().unwrap();
+        if let Some(child) = guard.as_mut() {
+            match child.try_wait() {
+                Ok(Some(_)) => {
+                    *guard = None;
+                    false
+                }
+                Ok(None) => true,
+                Err(_) => false,
+            }
+        } else {
+            false
+        }
+    }
+
+    fn current_port(&self) -> Option<u16> {
+        *self.port.lock().unwrap()
+    }
+
+    fn current_model_path(&self) -> Option<PathBuf> {
+        self.model_path.lock().unwrap().clone()
+    }
+
+    fn set_running(
+        &self,
+        child: Child,
+        port: u16,
+        model_path: PathBuf,
+        compute_mode: String,
+        gpu_backend: String,
+        gpu_layers: i32,
+        cuda_version: String,
+    ) {
+        *self.child.lock().unwrap() = Some(child);
+        *self.port.lock().unwrap() = Some(port);
+        *self.model_path.lock().unwrap() = Some(model_path);
+        *self.compute_mode.lock().unwrap() = Some(compute_mode);
+        *self.gpu_backend.lock().unwrap() = Some(gpu_backend);
+        *self.gpu_layers.lock().unwrap() = Some(gpu_layers);
+        *self.cuda_version.lock().unwrap() = Some(cuda_version);
+    }
+
+    pub fn stop(&self) {
+        if let Some(mut child) = self.child.lock().unwrap().take() {
+            // On Windows, kill the entire process tree using taskkill
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                let pid = child.id();
+                let _ = Command::new("taskkill")
+                    .args(["/F", "/T", "/PID", &pid.to_string()])
+                    .creation_flags(0x08000000)
+                    .output();
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = child.kill();
+            }
+            let _ = child.wait();
+        }
+        *self.port.lock().unwrap() = None;
+        *self.model_path.lock().unwrap() = None;
+        *self.compute_mode.lock().unwrap() = None;
+        *self.gpu_backend.lock().unwrap() = None;
+        *self.gpu_layers.lock().unwrap() = None;
+        *self.cuda_version.lock().unwrap() = None;
+    }
+}
+
+impl Drop for BuiltinLlmManager {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+fn normalize_cuda_version(raw: Option<&str>) -> &'static str {
+    match raw {
+        Some("13.1") => "13.1",
+        _ => "12.4",
+    }
+}
+
+fn runtime_dir(llm_dir: &Path, compute_mode: &str, gpu_backend: &str, cuda_version: &str) -> PathBuf {
+    let base = llm_dir.join("runtime");
+    match compute_mode {
+        "gpu" | "hybrid" => {
+            if gpu_backend.eq_ignore_ascii_case("cuda") {
+                base.join(format!("cuda-{cuda_version}"))
+            } else {
+                base.join("vulkan")
+            }
+        }
+        _ => base.join("cpu"),
+    }
+}
+
+fn normalize_compute_mode(raw: Option<&str>) -> &'static str {
+    match raw {
+        Some("gpu") => "gpu",
+        Some("hybrid") => "hybrid",
+        _ => "cpu",
+    }
+}
+
+fn normalize_gpu_backend(raw: Option<&str>) -> &'static str {
+    match raw {
+        Some("cuda") | Some("CUDA") => "cuda",
+        _ => "vulkan",
+    }
+}
+
+fn models_dir(llm_dir: &Path) -> PathBuf {
+    llm_dir.join("models")
+}
+
+fn sanitize_model_id(raw: Option<String>) -> String {
+    let raw = raw.unwrap_or_else(|| "qwen3_0_6b_q4_k_m".to_string());
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return "qwen3_0_6b_q4_k_m".to_string();
+    }
+
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        let ok = ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == '.';
+        out.push(if ok { ch } else { '_' });
+    }
+
+    let out = out.trim_matches('.').trim_matches('_').trim_matches('-');
+    if out.is_empty() {
+        return "qwen3_0_6b_q4_k_m".to_string();
+    }
+    out.chars().take(80).collect::<String>()
+}
+
+fn is_builtin_qwen3_model_id(model_id: &str) -> bool {
+    matches!(
+        model_id,
+        "qwen3_0_6b_q4_k_m"
+            | "qwen3_1_7b_q4_k_m"
+            | "qwen3_4b_q4_k_m"
+            | "qwen3_4b_q5_k_m"
+            | "qwen3_8b_q4_k_m"
+            | "qwen3_8b_q5_k_m"
+    )
+}
+
+fn model_file_name(model_id: &str) -> &'static str {
+    match model_id {
+        "qwen3_0_6b_q4_k_m" => "Qwen3-0.6B-Q4_K_M.gguf",
+        "qwen3_1_7b_q4_k_m" => "Qwen3-1.7B-Q4_K_M.gguf",
+        "qwen3_4b_q4_k_m" => "Qwen3-4B-Q4_K_M.gguf",
+        "qwen3_4b_q5_k_m" => "Qwen3-4B-Q5_K_M.gguf",
+        "qwen3_8b_q4_k_m" => "Qwen3-8B-Q4_K_M.gguf",
+        "qwen3_8b_q5_k_m" => "Qwen3-8B-Q5_K_M.gguf",
+        _ => "Qwen3-0.6B-Q4_K_M.gguf",
+    }
+}
+
+fn legacy_model_file_name(model_id: &str) -> Option<&'static str> {
+    match model_id {
+        "q8_0" => Some("Qwen3-Embedding-0.6B-Q8_0.gguf"),
+        _ => None,
+    }
+}
+
+fn model_urls(model_id: &str) -> [&'static str; 3] {
+    match model_id {
+        "qwen3_0_6b_q4_k_m" => [
+            "https://www.modelscope.cn/models/unsloth/Qwen3-0.6B-GGUF/resolve/master/Qwen3-0.6B-Q4_K_M.gguf",
+            "https://www.modelscope.cn/models/unsloth/Qwen3-0.6B-GGUF/resolve/master/Qwen3-0.6B-Q4_K_M.gguf",
+            "https://www.modelscope.cn/models/unsloth/Qwen3-0.6B-GGUF/resolve/master/Qwen3-0.6B-Q4_K_M.gguf",
+        ],
+        "qwen3_1_7b_q4_k_m" => [
+            "https://www.modelscope.cn/models/unsloth/Qwen3-1.7B-GGUF/resolve/master/Qwen3-1.7B-Q4_K_M.gguf",
+            "https://www.modelscope.cn/models/unsloth/Qwen3-1.7B-GGUF/resolve/master/Qwen3-1.7B-Q4_K_M.gguf",
+            "https://www.modelscope.cn/models/unsloth/Qwen3-1.7B-GGUF/resolve/master/Qwen3-1.7B-Q4_K_M.gguf",
+        ],
+        "qwen3_4b_q4_k_m" => [
+            "https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q4_K_M.gguf",
+            "https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q4_K_M.gguf",
+            "https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q4_K_M.gguf",
+        ],
+        "qwen3_4b_q5_k_m" => [
+            "https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q5_K_M.gguf",
+            "https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q5_K_M.gguf",
+            "https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q5_K_M.gguf",
+        ],
+        "qwen3_8b_q4_k_m" => [
+            "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q4_K_M.gguf",
+            "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q4_K_M.gguf",
+            "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q4_K_M.gguf",
+        ],
+        "qwen3_8b_q5_k_m" => [
+            "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q5_K_M.gguf",
+            "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q5_K_M.gguf",
+            "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q5_K_M.gguf",
+        ],
+        _ => ["", "", ""],
+    }
+}
+
+fn model_file_path(llm_dir: &Path, model_id: &str) -> PathBuf {
+    if is_builtin_qwen3_model_id(model_id) {
+        return models_dir(llm_dir).join(model_file_name(model_id));
+    }
+    let id = model_id.trim_end_matches(".gguf");
+    models_dir(llm_dir).join(format!("{id}.gguf"))
+}
+
+fn model_candidate_paths(llm_dir: &Path, model_id: &str) -> Vec<PathBuf> {
+    let mut out = vec![model_file_path(llm_dir, model_id)];
+    if let Some(legacy) = legacy_model_file_name(model_id) {
+        out.push(models_dir(llm_dir).join(legacy));
+    }
+    out
+}
+
+fn model_id_from_path(llm_dir: &Path, path: &Path) -> Option<String> {
+    for id in [
+        "qwen3_0_6b_q4_k_m",
+        "qwen3_1_7b_q4_k_m",
+        "qwen3_4b_q4_k_m",
+        "qwen3_4b_q5_k_m",
+        "qwen3_8b_q4_k_m",
+        "qwen3_8b_q5_k_m",
+    ] {
+        if path == model_file_path(llm_dir, id) {
+            return Some(id.to_string());
+        }
+    }
+
+    let models = models_dir(llm_dir);
+    if let Ok(rel) = path.strip_prefix(&models) {
+        if let Some(stem) = rel.file_stem().and_then(|s| s.to_str()) {
+            let id = sanitize_model_id(Some(stem.to_string()));
+            if !id.is_empty() {
+                return Some(id);
+            }
+        }
+    }
+    None
+}
+
+fn find_llama_server(runtime: &Path) -> Option<PathBuf> {
+    let candidates = [
+        runtime.join("llama-server.exe"),
+        runtime.join("server.exe"),
+        runtime.join("llama-server"),
+        runtime.join("server"),
+    ];
+    for c in candidates {
+        if c.exists() {
+            return Some(c);
+        }
+    }
+
+    for entry in walkdir::WalkDir::new(runtime).into_iter().filter_map(|e| e.ok()) {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        if name == "llama-server.exe" || name == "server.exe" || name == "llama-server" || name == "server" {
+            return Some(entry.path().to_path_buf());
+        }
+    }
+
+    None
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DownloadProgress {
+    written: u64,
+    total: Option<u64>,
+    label: String,
+    speed: Option<u64>,
+}
+
+fn report_progress(app: &AppHandle, ch: &Channel<DownloadProgress>, progress: DownloadProgress) {
+    let _ = app.emit("builtin-llm-download-progress", &progress);
+    let _ = ch.send(progress);
+}
+
+async fn download_to_file(app: &AppHandle, ch: &Channel<DownloadProgress>, urls: &[&str], dest_file: &Path, label: &str, cancel: &AtomicBool) -> Result<(), String> {
+    if let Some(parent) = dest_file.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Aireader/0.1")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let tmp_path = dest_file.with_extension("part");
+    let mut errors: Vec<String> = vec![];
+
+    for url in urls {
+        if cancel.load(Ordering::Relaxed) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err("Download cancelled".to_string());
+        }
+
+        // Report "connecting" so frontend knows download is attempting
+        report_progress(app, ch, DownloadProgress {
+            written: 0,
+            total: None,
+            label: label.to_string(),
+            speed: None,
+        });
+
+        let resp = match client.get(*url).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                errors.push(format!("{url} -> {e}"));
+                continue;
+            }
+        };
+
+        if !resp.status().is_success() {
+            errors.push(format!("{url} -> HTTP {}", resp.status()));
+            continue;
+        }
+
+        let expected_len = resp.content_length();
+
+        // Report initial progress with total size once known
+        report_progress(app, ch, DownloadProgress {
+            written: 0,
+            total: expected_len,
+            label: label.to_string(),
+            speed: None,
+        });
+
+        let mut file = std::fs::File::create(&tmp_path).map_err(|e| e.to_string())?;
+        let mut stream = resp.bytes_stream();
+        let mut written: u64 = 0;
+        let mut last_emit = Instant::now();
+        let mut last_speed_written: u64 = 0;
+        let mut last_speed_time = Instant::now();
+        let mut current_speed: Option<u64> = None;
+        while let Some(item) = stream.next().await {
+            if cancel.load(Ordering::Relaxed) {
+                drop(file);
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err("Download cancelled".to_string());
+            }
+            let chunk = item.map_err(|e| e.to_string())?;
+            use std::io::Write;
+            file.write_all(&chunk).map_err(|e| e.to_string())?;
+            written = written.saturating_add(chunk.len() as u64);
+            if last_emit.elapsed() >= Duration::from_millis(200) {
+                let speed_elapsed = last_speed_time.elapsed();
+                if speed_elapsed >= Duration::from_secs(1) {
+                    let delta = written.saturating_sub(last_speed_written);
+                    current_speed = Some((delta as f64 / speed_elapsed.as_secs_f64()) as u64);
+                    last_speed_written = written;
+                    last_speed_time = Instant::now();
+                }
+                report_progress(app, ch, DownloadProgress {
+                    written,
+                    total: expected_len,
+                    label: label.to_string(),
+                    speed: current_speed,
+                });
+                last_emit = Instant::now();
+            }
+        }
+        // Report final progress
+        report_progress(app, ch, DownloadProgress {
+            written,
+            total: expected_len,
+            label: label.to_string(),
+            speed: current_speed,
+        });
+
+        if let Some(len) = expected_len {
+            if written != len {
+                let _ = std::fs::remove_file(&tmp_path);
+                errors.push(format!("{url} -> incomplete download ({written}/{len})"));
+                continue;
+            }
+        }
+
+        if dest_file.exists() {
+            let _ = std::fs::remove_file(dest_file);
+        }
+        std::fs::rename(&tmp_path, dest_file).map_err(|e| e.to_string())?;
+
+        return Ok(());
+    }
+
+    let _ = std::fs::remove_file(&tmp_path);
+
+    if errors.is_empty() {
+        Err("download failed".to_string())
+    } else {
+        Err(format!("download failed: {}", errors.join("; ")))
+    }
+}
+
+fn file_starts_with(path: &Path, magic: &[u8]) -> bool {
+    let mut buf = vec![0u8; magic.len()];
+    let mut f = match std::fs::File::open(path) {
+        Ok(x) => x,
+        Err(_) => return false,
+    };
+    use std::io::Read;
+    if f.read_exact(&mut buf).is_err() {
+        return false;
+    }
+    buf == magic
+}
+
+fn safe_zip_extract(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
+    safe_zip_extract_with_progress(zip_path, dest_dir, None, None, "")
+}
+
+fn safe_zip_extract_with_progress(
+    zip_path: &Path,
+    dest_dir: &Path,
+    app: Option<&AppHandle>,
+    ch: Option<&Channel<DownloadProgress>>,
+    label: &str,
+) -> Result<(), String> {
+    std::fs::create_dir_all(dest_dir).map_err(|e| e.to_string())?;
+
+    let file = std::fs::File::open(zip_path).map_err(|e| e.to_string())?;
+    let total_size = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+    let mut bytes_done: u64 = 0;
+    let mut last_emit = Instant::now();
+
+    // Report start
+    if !label.is_empty() {
+        if let (Some(a), Some(c)) = (app, ch) {
+            report_progress(a, c, DownloadProgress {
+                written: 0,
+                total: Some(total_size),
+                label: label.to_string(),
+                speed: None,
+            });
+        }
+    }
+
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
+        let compressed = entry.compressed_size();
+        let name = entry.name().replace('\\', "/");
+
+        if name.starts_with('/') {
+            continue;
+        }
+        if name.contains("..") {
+            continue;
+        }
+
+        let out_path = dest_dir.join(&name);
+
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            let mut out = std::fs::File::create(&out_path).map_err(|e| e.to_string())?;
+            std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+        }
+
+        bytes_done = bytes_done.saturating_add(compressed);
+
+        // Report extraction progress (throttled)
+        if !label.is_empty() && last_emit.elapsed() >= Duration::from_millis(150) {
+            if let (Some(a), Some(c)) = (app, ch) {
+                report_progress(a, c, DownloadProgress {
+                    written: bytes_done,
+                    total: Some(total_size),
+                    label: label.to_string(),
+                    speed: None,
+                });
+            }
+            last_emit = Instant::now();
+        }
+    }
+
+    // Report extraction complete
+    if !label.is_empty() {
+        if let (Some(a), Some(c)) = (app, ch) {
+            report_progress(a, c, DownloadProgress {
+                written: total_size,
+                total: Some(total_size),
+                label: label.to_string(),
+                speed: None,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn pick_free_port() -> Result<u16, String> {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| e.to_string())?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    drop(listener);
+    Ok(port)
+}
+
+fn wait_port_open(port: u16, timeout: Duration) -> bool {
+    let start = Instant::now();
+    while start.elapsed() < timeout {
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(150));
+    }
+    false
+}
+
+fn runtime_installed(llm_dir: &Path, compute_mode: &str, gpu_backend: &str) -> bool {
+    let rt = runtime_dir(llm_dir, compute_mode, gpu_backend, "12.4");
+    find_llama_server(&rt).is_some()
+}
+
+async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode: &str, gpu_backend: &str, cuda_version: &str, custom_runtime_url: Option<&str>, custom_cudart_url: Option<&str>, cancel: &AtomicBool, progress_ch: &Channel<DownloadProgress>) -> Result<PathBuf, String> {
+    let rt = runtime_dir(llm_dir, compute_mode, gpu_backend, cuda_version);
+
+    // Migrate legacy CPU runtime: files in runtime/ -> runtime/cpu/
+    if compute_mode == "cpu" {
+        let legacy = llm_dir.join("runtime");
+        if find_llama_server(&legacy).is_some() {
+            let _ = std::fs::create_dir_all(&rt);
+            if find_llama_server(&rt).is_none() {
+                if let Ok(entries) = std::fs::read_dir(&legacy) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            let dest = rt.join(path.file_name().unwrap());
+                            let _ = std::fs::rename(&path, &dest);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Return early if already installed — do NOT create dirs eagerly
+    if let Some(server) = find_llama_server(&rt) {
+        return Ok(server);
+    }
+
+    // Only create dir when we actually need to download/install
+    std::fs::create_dir_all(&rt).map_err(|e| e.to_string())?;
+
+    // Prefer bundled runtime if present
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let variant = rt
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("cpu");
+        let bundled_candidates = [
+            resource_dir.join("llm").join("runtime").join(variant),
+            resource_dir.join("resources").join("llm").join("runtime").join(variant),
+        ];
+        for bundled in bundled_candidates {
+            if !bundled.exists() {
+                continue;
+            }
+            // best-effort copy
+            for entry in walkdir::WalkDir::new(&bundled).into_iter().filter_map(|e| e.ok()) {
+                if entry.file_type().is_dir() {
+                    continue;
+                }
+                let rel = match entry.path().strip_prefix(&bundled) {
+                    Ok(r) => r,
+                    Err(_) => continue,
+                };
+                let dst = rt.join(rel);
+                if let Some(parent) = dst.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::copy(entry.path(), &dst);
+            }
+            if let Some(server) = find_llama_server(&rt) {
+                return Ok(server);
+            }
+        }
+    }
+
+    let zip_name = match compute_mode {
+        "gpu" | "hybrid" => {
+            if gpu_backend.eq_ignore_ascii_case("cuda") {
+                if cuda_version == "13.1" {
+                    "llama-b7927-bin-win-cuda-13.1-x64.zip"
+                } else {
+                    "llama-b7927-bin-win-cuda-12.4-x64.zip"
+                }
+            } else {
+                "llama-b7927-bin-win-vulkan-x64.zip"
+            }
+        }
+        _ => "llama-b7927-bin-win-cpu-x64.zip",
+    };
+
+    let cudart_name = if (compute_mode == "gpu" || compute_mode == "hybrid") && gpu_backend.eq_ignore_ascii_case("cuda") {
+        if cuda_version == "13.1" {
+            Some("cudart-llama-bin-win-cuda-13.1-x64.zip")
+        } else {
+            Some("cudart-llama-bin-win-cuda-12.4-x64.zip")
+        }
+    } else {
+        None
+    };
+
+    // Prefer bundled zip runtime if present
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let zip_candidates = [
+            resource_dir
+                .join("llm")
+                .join("runtime")
+                .join(zip_name),
+            resource_dir
+                .join("resources")
+                .join("llm")
+                .join("runtime")
+                .join(zip_name),
+        ];
+
+        if let Some(cudart_name) = cudart_name {
+            let cudart_candidates = [
+                resource_dir.join("llm").join("runtime").join(cudart_name),
+                resource_dir
+                    .join("resources")
+                    .join("llm")
+                    .join("runtime")
+                    .join(cudart_name),
+            ];
+            for z in cudart_candidates {
+                if z.exists() {
+                    let _ = safe_zip_extract_with_progress(&z, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime");
+                    break;
+                }
+            }
+        }
+
+        for z in zip_candidates {
+            if !z.exists() {
+                continue;
+            }
+            safe_zip_extract_with_progress(&z, &rt, Some(app), Some(progress_ch), "Extracting LLM runtime")?;
+            if let Some(server) = find_llama_server(&rt) {
+                return Ok(server);
+            }
+        }
+    }
+
+    // Fallback: download runtime zip and extract
+    let default_base = "https://www.modelscope.cn/datasets/Lissajous/llamacppforwin64/resolve/master";
+    let default_runtime_url = format!("{}/{}", default_base, zip_name);
+    let runtime_url = custom_runtime_url
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&default_runtime_url);
+
+    let zip_path = rt.join(zip_name);
+
+    if let Some(cudart_name) = cudart_name {
+        let default_cudart_url = format!("{}/{}", default_base, cudart_name);
+        let cudart_url = custom_cudart_url
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&default_cudart_url);
+        let cudart_path = rt.join(cudart_name);
+        let _ = download_to_file(app, progress_ch, &[cudart_url], &cudart_path, "Downloading CUDA runtime", cancel).await;
+        let _ = safe_zip_extract_with_progress(&cudart_path, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime");
+        let _ = std::fs::remove_file(&cudart_path);
+    }
+
+    download_to_file(app, progress_ch, &[runtime_url], &zip_path, "Downloading LLM runtime", cancel).await?;
+    safe_zip_extract_with_progress(&zip_path, &rt, Some(app), Some(progress_ch), "Extracting LLM runtime")?;
+    let _ = std::fs::remove_file(&zip_path);
+
+    if let Some(server) = find_llama_server(&rt) {
+        return Ok(server);
+    }
+
+    Err(format!(
+        "builtin LLM runtime not found. Please place llama-server under: {} (computeMode={}, gpuBackend={}, cudaVersion={})",
+        rt.to_string_lossy(),
+        compute_mode,
+        gpu_backend,
+        cuda_version
+    ))
+}
+
+async fn ensure_model_with_mode(app: &AppHandle, llm_dir: &Path, model_id: &str, allow_download: bool, custom_url: Option<&str>, cancel: &AtomicBool, progress_ch: &Channel<DownloadProgress>) -> Result<PathBuf, String> {
+    let models = models_dir(llm_dir);
+    std::fs::create_dir_all(&models).map_err(|e| e.to_string())?;
+
+    for cand in model_candidate_paths(llm_dir, model_id) {
+        if cand.exists() {
+            return Ok(cand);
+        }
+    }
+
+    if !is_builtin_qwen3_model_id(model_id) {
+        return Err("custom model not found. Please import a GGUF file from Settings.".to_string());
+    }
+
+    let target = model_file_path(llm_dir, model_id);
+    if let Some(parent) = target.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    // Prefer bundled model if present
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let file_name = model_file_name(model_id);
+        let bundled_candidates = [
+            resource_dir
+                .join("llm")
+                .join("models")
+                .join(file_name),
+            resource_dir
+                .join("resources")
+                .join("llm")
+                .join("models")
+                .join(file_name),
+        ];
+        for bundled in bundled_candidates {
+            if bundled.exists() {
+                std::fs::copy(&bundled, &target).map_err(|e| e.to_string())?;
+                return Ok(target);
+            }
+        }
+    }
+
+    if !allow_download {
+        return Err("builtin model not found. Please bundle it under resources/llm/models or import it from Settings.".to_string());
+    }
+
+    let default_urls = model_urls(model_id);
+    let urls: Vec<&str> = if let Some(cu) = custom_url {
+        if !cu.is_empty() { vec![cu] } else { default_urls.to_vec() }
+    } else {
+        default_urls.to_vec()
+    };
+    if urls.is_empty() || urls[0].is_empty() {
+        return Err("builtin model URL not configured".to_string());
+    }
+    download_to_file(app, progress_ch, &urls, &target, model_id, cancel).await?;
+
+    if !file_starts_with(&target, b"GGUF") {
+        let _ = std::fs::remove_file(&target);
+        return Err("downloaded model is not a GGUF file (signature mismatch)".to_string());
+    }
+    Ok(target)
+}
+
+fn status_from(state: &AppState, model_id: &str) -> BuiltinLlmStatus {
+    let running = state.builtin_llm.is_running();
+    let running_model_id = if running {
+        state
+            .builtin_llm
+            .current_model_path()
+            .and_then(|p| model_id_from_path(&state.llm_dir, &p))
+    } else {
+        None
+    };
+    let running_this_model = running_model_id.as_deref() == Some(model_id);
+    let base_url = if running {
+        state
+            .builtin_llm
+            .current_port()
+            .map(|p| format!("http://127.0.0.1:{p}"))
+    } else {
+        None
+    };
+
+    BuiltinLlmStatus {
+        runtime_installed: runtime_installed(&state.llm_dir, "cpu", "vulkan"),
+        model_installed: model_candidate_paths(&state.llm_dir, model_id).iter().any(|p| p.exists()),
+        model_id: model_id.to_string(),
+        running_model_id,
+        running_this_model,
+        running,
+        base_url,
+    }
+}
+
+fn status_from_options(state: &AppState, model_id: &str, options: &Option<BuiltinLlmOptions>) -> BuiltinLlmStatus {
+    let compute_mode = normalize_compute_mode(options.as_ref().and_then(|o| o.compute_mode.as_deref()));
+    let gpu_backend = normalize_gpu_backend(options.as_ref().and_then(|o| o.gpu_backend.as_deref()));
+    let cuda_version = normalize_cuda_version(options.as_ref().and_then(|o| o.cuda_version.as_deref()));
+
+    let mut s = status_from(state, model_id);
+    // runtime_installed currently uses generic cpu/vulkan/cuda dir; for CUDA we treat per-version dirs
+    if compute_mode == "gpu" || compute_mode == "hybrid" {
+        let rt = runtime_dir(&state.llm_dir, compute_mode, gpu_backend, cuda_version);
+        s.runtime_installed = find_llama_server(&rt).is_some();
+    } else {
+        s.runtime_installed = runtime_installed(&state.llm_dir, compute_mode, gpu_backend);
+    }
+    s
+}
+
+#[tauri::command]
+pub fn builtin_llm_status(state: State<AppState>, options: Option<BuiltinLlmOptions>) -> Result<BuiltinLlmStatus, String> {
+    let model_id = sanitize_model_id(options.as_ref().and_then(|o| o.model_id.clone()));
+    Ok(status_from_options(&state, &model_id, &options))
+}
+
+fn probe_vram_bytes_from_nvidia_smi() -> Option<u64> {
+    let out = Command::new("nvidia-smi")
+        .args([
+            "--query-gpu=memory.total",
+            "--format=csv,noheader,nounits",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout);
+    let mut best_mb: u64 = 0;
+    for line in s.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let mb = t.parse::<u64>().ok();
+        if let Some(mb) = mb {
+            best_mb = best_mb.max(mb);
+        }
+    }
+    if best_mb == 0 {
+        return None;
+    }
+    Some(best_mb.saturating_mul(1024).saturating_mul(1024))
+}
+
+#[cfg(target_os = "windows")]
+fn probe_vram_bytes_windows() -> Option<u64> {
+    if let Some(v) = probe_vram_bytes_from_nvidia_smi() {
+        return Some(v);
+    }
+
+    // wmic may not exist on recent Windows, so this is best-effort.
+    let out = Command::new("wmic")
+        .args(["path", "win32_VideoController", "get", "AdapterRAM"])
+        .output()
+        .ok();
+
+    if let Some(out) = out {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout);
+            let mut best: u64 = 0;
+            for line in s.lines() {
+                let t = line.trim();
+                if t.is_empty() {
+                    continue;
+                }
+                // take pure digits line
+                let digits: String = t.chars().filter(|c| c.is_ascii_digit()).collect();
+                if digits.is_empty() {
+                    continue;
+                }
+                if let Ok(v) = digits.parse::<u64>() {
+                    best = best.max(v);
+                }
+            }
+            if best > 0 {
+                return Some(best);
+            }
+        }
+    }
+
+    // PowerShell fallback
+    let out = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "(Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty AdapterRAM) -join '\n'",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout);
+    let mut best: u64 = 0;
+    for line in s.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let digits: String = t.chars().filter(|c| c.is_ascii_digit()).collect();
+        if digits.is_empty() {
+            continue;
+        }
+        if let Ok(v) = digits.parse::<u64>() {
+            best = best.max(v);
+        }
+    }
+    if best == 0 {
+        None
+    } else {
+        Some(best)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn probe_vram_bytes_windows() -> Option<u64> {
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn probe_vram_bytes_unix() -> Option<u64> {
+    probe_vram_bytes_from_nvidia_smi()
+}
+
+#[cfg(target_os = "windows")]
+fn probe_vram_bytes_unix() -> Option<u64> {
+    None
+}
+
+fn probe_vram_bytes() -> Option<u64> {
+    probe_vram_bytes_windows().or_else(probe_vram_bytes_unix)
+}
+
+fn cap_tier_by_vram(mut tier: i32, vram_bytes: Option<u64>) -> i32 {
+    let vram_bytes = match vram_bytes {
+        Some(v) if v > 0 => v,
+        _ => return tier,
+    };
+    let gb = vram_bytes / 1024 / 1024 / 1024;
+    let cap = if gb < 4 { 0 } else if gb < 6 { 1 } else if gb < 10 { 2 } else { 3 };
+    tier = tier.min(cap);
+    tier.clamp(0, 3)
+}
+
+fn clamp_gpu_layers_by_vram(mut layers: i32, vram_bytes: Option<u64>) -> i32 {
+    if layers < 0 {
+        layers = 0;
+    }
+    let vram_bytes = match vram_bytes {
+        Some(v) if v > 0 => v,
+        _ => return layers,
+    };
+    let gb = vram_bytes / 1024 / 1024 / 1024;
+    let max_layers = if gb < 4 { 0 } else if gb < 6 { 8 } else if gb < 8 { 16 } else { 999 };
+    layers.min(max_layers)
+}
+
+#[derive(Debug, Serialize)]
+pub struct BuiltinProbeResult {
+    #[serde(rename = "cpuCores")]
+    pub cpu_cores: usize,
+    #[serde(rename = "cpuBrand")]
+    pub cpu_brand: String,
+    #[serde(rename = "totalMemoryBytes")]
+    pub total_memory_bytes: u64,
+    #[serde(rename = "vramBytes")]
+    pub vram_bytes: Option<u64>,
+    #[serde(rename = "gpuName")]
+    pub gpu_name: Option<String>,
+    #[serde(rename = "hasCuda")]
+    pub has_cuda: bool,
+    #[serde(rename = "hasVulkan")]
+    pub has_vulkan: bool,
+}
+
+fn probe_gpu_name() -> Option<String> {
+    #[cfg(target_os = "windows")]
+    {
+        let out = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join ', '",
+            ])
+            .output()
+            .ok()?;
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !s.is_empty() {
+                return Some(s);
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+pub fn builtin_llm_probe_system() -> Result<BuiltinProbeResult, String> {
+    let mut sys = System::new_all();
+    sys.refresh_memory();
+    sys.refresh_cpu();
+
+    // sysinfo >= 0.28 returns bytes directly
+    let total_memory_bytes = sys.total_memory();
+    let cpu_cores = sys.cpus().len();
+    let cpu_brand = sys.cpus().first().map(|c| c.brand().to_string()).unwrap_or_default();
+
+    let has_vulkan = unsafe { Library::new("vulkan-1.dll") }.is_ok();
+    let has_cuda = unsafe { Library::new("nvcuda.dll") }.is_ok();
+    let vram_bytes = probe_vram_bytes();
+    let gpu_name = probe_gpu_name();
+
+    Ok(BuiltinProbeResult {
+        cpu_cores,
+        cpu_brand,
+        total_memory_bytes,
+        vram_bytes,
+        gpu_name,
+        has_cuda,
+        has_vulkan,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BuiltinAutoStartOptions {
+    #[serde(rename = "allowDownload")]
+    pub allow_download: Option<bool>,
+    #[serde(rename = "preferredTier")]
+    pub preferred_tier: Option<String>,
+    #[serde(rename = "preferredCompute")]
+    pub preferred_compute: Option<String>,
+    #[serde(rename = "gpuLayers")]
+    pub gpu_layers: Option<i32>,
+    #[serde(rename = "cudaVersion")]
+    pub cuda_version: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BuiltinAutoStartResult {
+    #[serde(rename = "chosenModelId")]
+    pub chosen_model_id: String,
+    #[serde(rename = "chosenComputeMode")]
+    pub chosen_compute_mode: String,
+    #[serde(rename = "chosenGpuBackend")]
+    pub chosen_gpu_backend: String,
+    #[serde(rename = "chosenCudaVersion")]
+    pub chosen_cuda_version: String,
+    pub status: BuiltinLlmStatus,
+    pub probe: BuiltinProbeResult,
+}
+
+/// T8: Consider both RAM and dedicated GPU VRAM when selecting tier.
+/// - GPU mode: model must fit entirely in VRAM → min(vram_tier, ram_tier)
+///   (RAM still needed for mmap during load, so can't exceed ram_tier either)
+/// - Hybrid mode: model size determined by RAM, GPU only accelerates some layers → ram_tier
+///   (cap_tier_by_vram applied separately to prevent GPU OOM on the loaded layers)
+/// - CPU mode: only RAM matters → ram_tier
+fn tier_from_resources(total_mem_gb: u64, vram_bytes: Option<u64>, compute_mode: &str) -> i32 {
+    let ram_tier = if total_mem_gb < 8 { 0 }
+        else if total_mem_gb < 12 { 1 }
+        else if total_mem_gb < 20 { 2 }
+        else { 3 };
+
+    if compute_mode == "cpu" {
+        return ram_tier;
+    }
+
+    let vram_gb = vram_bytes.unwrap_or(0) / 1024 / 1024 / 1024;
+    let vram_tier = if vram_gb < 4 { 0 }
+        else if vram_gb < 6 { 1 }
+        else if vram_gb < 10 { 2 }
+        else { 3 };
+
+    if compute_mode == "gpu" {
+        // GPU mode: VRAM is hard constraint, also can't exceed RAM capacity
+        ram_tier.min(vram_tier)
+    } else {
+        // Hybrid mode: RAM determines model size, VRAM provides acceleration
+        // (gpu_layers will be capped by clamp_gpu_layers_by_vram separately)
+        ram_tier
+    }
+}
+
+fn tier_to_model_id(tier: i32, total_mem_gb: u64) -> String {
+    match tier {
+        3 => {
+            // Conservative: prefer Q4 on <= 24GB
+            if total_mem_gb <= 24 {
+                "qwen3_8b_q4_k_m".to_string()
+            } else {
+                "qwen3_8b_q5_k_m".to_string()
+            }
+        }
+        2 => "qwen3_4b_q4_k_m".to_string(),
+        1 => "qwen3_1_7b_q4_k_m".to_string(),
+        _ => "qwen3_0_6b_q4_k_m".to_string(),
+    }
+}
+
+fn parse_preferred_tier(raw: Option<&str>) -> Option<i32> {
+    let r = raw?.trim();
+    if r.eq_ignore_ascii_case("auto") || r.is_empty() {
+        return None;
+    }
+    match r {
+        "0" => Some(0),
+        "1" => Some(1),
+        "2" => Some(2),
+        "3" => Some(3),
+        _ => None,
+    }
+}
+
+fn normalize_preferred_compute(raw: Option<&str>) -> Option<&'static str> {
+    match raw {
+        Some("cpu") => Some("cpu"),
+        Some("gpu") => Some("gpu"),
+        Some("hybrid") => Some("hybrid"),
+        _ => None,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BuiltinRecommendOptions {
+    #[serde(rename = "preferredTier")]
+    pub preferred_tier: Option<String>,
+    #[serde(rename = "preferredCompute")]
+    pub preferred_compute: Option<String>,
+    #[serde(rename = "cudaVersion")]
+    pub cuda_version: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BuiltinRecommendResult {
+    #[serde(rename = "recommendedModelId")]
+    pub recommended_model_id: String,
+    #[serde(rename = "recommendedComputeMode")]
+    pub recommended_compute_mode: String,
+    #[serde(rename = "recommendedGpuBackend")]
+    pub recommended_gpu_backend: String,
+    #[serde(rename = "recommendedCudaVersion")]
+    pub recommended_cuda_version: String,
+    pub probe: BuiltinProbeResult,
+}
+
+#[tauri::command]
+pub fn builtin_llm_recommend(options: Option<BuiltinRecommendOptions>) -> Result<BuiltinRecommendResult, String> {
+    let probe = builtin_llm_probe_system()?;
+    let total_mem_gb = probe.total_memory_bytes / 1024 / 1024 / 1024;
+
+    let preferred_tier = parse_preferred_tier(options.as_ref().and_then(|o| o.preferred_tier.as_deref()));
+    let preferred_compute = normalize_preferred_compute(options.as_ref().and_then(|o| o.preferred_compute.as_deref()));
+    let cuda_version = normalize_cuda_version(options.as_ref().and_then(|o| o.cuda_version.as_deref()));
+
+    let (compute_mode, gpu_backend) = if let Some(pc) = preferred_compute {
+        let backend = if (pc == "gpu" || pc == "hybrid") && probe.has_cuda {
+            "cuda"
+        } else {
+            "vulkan"
+        };
+        (pc.to_string(), backend.to_string())
+    } else if probe.has_cuda {
+        ("gpu".to_string(), "cuda".to_string())
+    } else if probe.has_vulkan {
+        ("hybrid".to_string(), "vulkan".to_string())
+    } else {
+        ("cpu".to_string(), "vulkan".to_string())
+    };
+
+    let mut tier = preferred_tier.unwrap_or_else(|| {
+        tier_from_resources(total_mem_gb, probe.vram_bytes, &compute_mode)
+    });
+    tier = tier.clamp(0, 3);
+
+    if compute_mode == "gpu" || compute_mode == "hybrid" {
+        tier = cap_tier_by_vram(tier, probe.vram_bytes);
+    }
+
+    let model_id = tier_to_model_id(tier, total_mem_gb);
+    Ok(BuiltinRecommendResult {
+        recommended_model_id: model_id,
+        recommended_compute_mode: compute_mode,
+        recommended_gpu_backend: gpu_backend,
+        recommended_cuda_version: cuda_version.to_string(),
+        probe,
+    })
+}
+
+#[tauri::command]
+pub async fn builtin_llm_auto_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    options: Option<BuiltinAutoStartOptions>,
+    on_progress: Channel<DownloadProgress>,
+) -> Result<BuiltinAutoStartResult, String> {
+    let probe = builtin_llm_probe_system()?;
+    let total_mem_gb = probe.total_memory_bytes / 1024 / 1024 / 1024;
+
+    let allow_download = options.as_ref().and_then(|o| o.allow_download).unwrap_or(true);
+    let gpu_layers_requested = options.as_ref().and_then(|o| o.gpu_layers).unwrap_or(20).max(0);
+    let cuda_version = normalize_cuda_version(options.as_ref().and_then(|o| o.cuda_version.as_deref()));
+
+    let preferred_tier = parse_preferred_tier(options.as_ref().and_then(|o| o.preferred_tier.as_deref()));
+    let preferred_compute = normalize_preferred_compute(options.as_ref().and_then(|o| o.preferred_compute.as_deref()));
+
+    let mut compute_candidates: Vec<(&'static str, &'static str)> = vec![];
+    if let Some(pc) = preferred_compute {
+        let backend = if (pc == "gpu" || pc == "hybrid") && probe.has_cuda { "cuda" } else { "vulkan" };
+        compute_candidates.push((pc, backend));
+    } else {
+        if probe.has_cuda {
+            compute_candidates.push(("gpu", "cuda"));
+        }
+        if probe.has_vulkan {
+            compute_candidates.push(("hybrid", "vulkan"));
+        }
+        compute_candidates.push(("cpu", "vulkan"));
+    }
+
+    for (compute_mode, gpu_backend) in compute_candidates {
+        let mut tier = preferred_tier.unwrap_or_else(|| {
+            tier_from_resources(total_mem_gb, probe.vram_bytes, compute_mode)
+        });
+        tier = tier.clamp(0, 3);
+
+        let mut t = if compute_mode == "gpu" || compute_mode == "hybrid" {
+            cap_tier_by_vram(tier, probe.vram_bytes)
+        } else {
+            tier
+        };
+        while t >= 0 {
+            let model_id = tier_to_model_id(t, total_mem_gb);
+
+            let gpu_layers = if compute_mode == "gpu" || compute_mode == "hybrid" {
+                clamp_gpu_layers_by_vram(gpu_layers_requested, probe.vram_bytes)
+            } else {
+                0
+            };
+            let opts = BuiltinLlmOptions {
+                model_id: Some(model_id.clone()),
+                mode: Some(if allow_download { "auto".to_string() } else { "bundled_only".to_string() }),
+                compute_mode: Some(compute_mode.to_string()),
+                gpu_backend: Some(gpu_backend.to_string()),
+                gpu_layers: Some(gpu_layers),
+                cuda_version: Some(cuda_version.to_string()),
+                model_url: None,
+                runtime_url: None,
+                cudart_url: None,
+            };
+
+            match ensure_running_impl(&app, &state, &Some(opts), &on_progress).await {
+                Ok(status) => {
+                    return Ok(BuiltinAutoStartResult {
+                        chosen_model_id: model_id,
+                        chosen_compute_mode: compute_mode.to_string(),
+                        chosen_gpu_backend: gpu_backend.to_string(),
+                        chosen_cuda_version: cuda_version.to_string(),
+                        status,
+                        probe,
+                    });
+                }
+                Err(_) => {
+                    t -= 1;
+                }
+            }
+        }
+    }
+
+    Err("auto start failed after trying fallbacks".to_string())
+}
+
+#[derive(Debug, Serialize)]
+pub struct BuiltinModelInfo {
+    #[serde(rename = "modelId")]
+    pub model_id: String,
+    #[serde(rename = "fileName")]
+    pub file_name: String,
+    pub size: u64,
+}
+
+#[tauri::command]
+pub fn builtin_llm_list_models(state: State<AppState>) -> Result<Vec<BuiltinModelInfo>, String> {
+    let dir = models_dir(&state.llm_dir);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let mut out: Vec<BuiltinModelInfo> = vec![];
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+        if !ext.eq_ignore_ascii_case("gguf") {
+            continue;
+        }
+        let meta = match std::fs::metadata(&path) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("model.gguf");
+
+        let mut model_id = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string());
+
+        for id in [
+            "qwen3_0_6b_q4_k_m",
+            "qwen3_1_7b_q4_k_m",
+            "qwen3_4b_q4_k_m",
+            "qwen3_4b_q5_k_m",
+            "qwen3_8b_q4_k_m",
+            "qwen3_8b_q5_k_m",
+        ] {
+            if file_name == model_file_name(id) {
+                model_id = Some(id.to_string());
+            }
+        }
+
+        let model_id = sanitize_model_id(model_id);
+        out.push(BuiltinModelInfo {
+            model_id,
+            file_name: file_name.to_string(),
+            size: meta.len(),
+        });
+    }
+
+    out.sort_by(|a, b| a.model_id.cmp(&b.model_id));
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn builtin_llm_install(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    options: Option<BuiltinLlmOptions>,
+    on_progress: Channel<DownloadProgress>,
+) -> Result<BuiltinLlmStatus, String> {
+    let model_id = sanitize_model_id(options.as_ref().and_then(|o| o.model_id.clone()));
+    let allow_download = options
+        .as_ref()
+        .and_then(|o| o.mode.as_deref())
+        != Some("bundled_only");
+    let compute_mode = normalize_compute_mode(options.as_ref().and_then(|o| o.compute_mode.as_deref()));
+    let gpu_backend = normalize_gpu_backend(options.as_ref().and_then(|o| o.gpu_backend.as_deref()));
+    let cuda_version = normalize_cuda_version(options.as_ref().and_then(|o| o.cuda_version.as_deref()));
+
+    let custom_url = options.as_ref().and_then(|o| o.model_url.as_deref());
+    let rt_url = options.as_ref().and_then(|o| o.runtime_url.as_deref());
+    let cudart_url = options.as_ref().and_then(|o| o.cudart_url.as_deref());
+    state.download_cancel.store(false, Ordering::Relaxed);
+    let _ = ensure_runtime_with_mode(&app, &state.llm_dir, compute_mode, gpu_backend, cuda_version, rt_url, cudart_url, &state.download_cancel, &on_progress).await?;
+    let _ = ensure_model_with_mode(&app, &state.llm_dir, &model_id, allow_download, custom_url, &state.download_cancel, &on_progress).await?;
+    Ok(status_from_options(&state, &model_id, &options))
+}
+
+async fn ensure_running_impl(
+    app: &AppHandle,
+    state: &AppState,
+    options: &Option<BuiltinLlmOptions>,
+    progress_ch: &Channel<DownloadProgress>,
+) -> Result<BuiltinLlmStatus, String> {
+    let model_id = sanitize_model_id(options.as_ref().and_then(|o| o.model_id.clone()));
+    let allow_download = options
+        .as_ref()
+        .and_then(|o| o.mode.as_deref())
+        != Some("bundled_only");
+    let compute_mode = normalize_compute_mode(options.as_ref().and_then(|o| o.compute_mode.as_deref()));
+    let gpu_backend = normalize_gpu_backend(options.as_ref().and_then(|o| o.gpu_backend.as_deref()));
+    let cuda_version = normalize_cuda_version(options.as_ref().and_then(|o| o.cuda_version.as_deref()));
+    let gpu_layers = options
+        .as_ref()
+        .and_then(|o| o.gpu_layers)
+        .unwrap_or(20)
+        .max(0);
+
+    if state.builtin_llm.is_running() {
+        let current_id = state
+            .builtin_llm
+            .current_model_path()
+            .and_then(|p| model_id_from_path(&state.llm_dir, &p));
+        let current_compute = state
+            .builtin_llm
+            .compute_mode
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| "cpu".to_string());
+        let current_backend = state
+            .builtin_llm
+            .gpu_backend
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| "vulkan".to_string());
+        let current_layers = *state
+            .builtin_llm
+            .gpu_layers
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap_or(&0);
+
+        let current_cuda = state
+            .builtin_llm
+            .cuda_version
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| "12.4".to_string());
+
+        let same_compute = current_compute == compute_mode;
+        let same_backend = current_backend == gpu_backend;
+        let same_layers = compute_mode != "hybrid" || current_layers == gpu_layers;
+        let same_cuda = !gpu_backend.eq_ignore_ascii_case("cuda") || current_cuda == cuda_version;
+
+        if current_id.as_deref() == Some(&model_id) && same_compute && same_backend && same_layers && same_cuda {
+            return Ok(status_from_options(state, &model_id, options));
+        }
+        state.builtin_llm.stop();
+    }
+
+    let custom_url = options.as_ref().and_then(|o| o.model_url.as_deref());
+    let rt_url = options.as_ref().and_then(|o| o.runtime_url.as_deref());
+    let cudart_url = options.as_ref().and_then(|o| o.cudart_url.as_deref());
+    state.download_cancel.store(false, Ordering::Relaxed);
+    let server = ensure_runtime_with_mode(app, &state.llm_dir, compute_mode, gpu_backend, cuda_version, rt_url, cudart_url, &state.download_cancel, progress_ch).await?;
+    let model = ensure_model_with_mode(app, &state.llm_dir, &model_id, allow_download, custom_url, &state.download_cancel, progress_ch).await?;
+
+    let port = pick_free_port()?;
+
+    let mut cmd = Command::new(server);
+    cmd.arg("-m")
+        .arg(&model)
+        .arg("--host")
+        .arg("127.0.0.1")
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--ctx-size")
+        .arg("4096")
+        .arg("--jinja")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+
+    if compute_mode == "gpu" {
+        cmd.arg("--n-gpu-layers").arg("999");
+    } else if compute_mode == "hybrid" {
+        cmd.arg("--n-gpu-layers").arg(gpu_layers.to_string());
+    } else {
+        cmd.arg("--n-gpu-layers").arg("0");
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let child = cmd.spawn().map_err(|e| e.to_string())?;
+    state.builtin_llm.set_running(
+        child,
+        port,
+        model,
+        compute_mode.to_string(),
+        gpu_backend.to_string(),
+        gpu_layers,
+        cuda_version.to_string(),
+    );
+
+    let ok = wait_port_open(port, Duration::from_secs(12));
+    if !ok {
+        return Err("llama-server failed to start".to_string());
+    }
+
+    Ok(status_from(state, &model_id))
+}
+
+#[tauri::command]
+pub async fn builtin_llm_ensure_running(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    options: Option<BuiltinLlmOptions>,
+    on_progress: Channel<DownloadProgress>,
+) -> Result<BuiltinLlmStatus, String> {
+    ensure_running_impl(&app, &state, &options, &on_progress).await
+}
+
+#[tauri::command]
+pub fn builtin_llm_stop(state: State<AppState>, options: Option<BuiltinLlmOptions>) -> Result<BuiltinLlmStatus, String> {
+    state.builtin_llm.stop();
+    let model_id = sanitize_model_id(options.as_ref().and_then(|o| o.model_id.clone()));
+    Ok(status_from_options(&state, &model_id, &options))
+}
+
+#[tauri::command]
+pub fn builtin_llm_delete_model(state: State<AppState>, options: Option<BuiltinLlmOptions>) -> Result<(), String> {
+    let model_id = sanitize_model_id(options.as_ref().and_then(|o| o.model_id.clone()));
+
+    // Prevent deleting a model that is currently running
+    if state.builtin_llm.is_running() {
+        let current_id = state
+            .builtin_llm
+            .current_model_path()
+            .and_then(|p| model_id_from_path(&state.llm_dir, &p));
+        if current_id.as_deref() == Some(&model_id) {
+            return Err("Cannot delete a model that is currently running. Stop it first.".to_string());
+        }
+    }
+
+    let mut deleted = false;
+    for cand in model_candidate_paths(&state.llm_dir, &model_id) {
+        if cand.exists() {
+            std::fs::remove_file(&cand).map_err(|e| format!("Failed to delete {}: {}", cand.display(), e))?;
+            deleted = true;
+        }
+    }
+    if !deleted {
+        return Err(format!("Model file not found for '{}'", model_id));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn builtin_llm_install_runtime(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    options: Option<BuiltinLlmOptions>,
+    on_progress: Channel<DownloadProgress>,
+) -> Result<(), String> {
+    let compute_mode = normalize_compute_mode(options.as_ref().and_then(|o| o.compute_mode.as_deref()));
+    let gpu_backend = normalize_gpu_backend(options.as_ref().and_then(|o| o.gpu_backend.as_deref()));
+    let cuda_version = normalize_cuda_version(options.as_ref().and_then(|o| o.cuda_version.as_deref()));
+    let rt_url = options.as_ref().and_then(|o| o.runtime_url.as_deref());
+    let cudart_url = options.as_ref().and_then(|o| o.cudart_url.as_deref());
+    state.download_cancel.store(false, Ordering::Relaxed);
+    let _ = ensure_runtime_with_mode(&app, &state.llm_dir, compute_mode, gpu_backend, cuda_version, rt_url, cudart_url, &state.download_cancel, &on_progress).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn builtin_llm_cancel_download(
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state.download_cancel.store(true, Ordering::Relaxed);
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct RuntimeStatusResult {
+    pub installed: bool,
+    #[serde(rename = "runtimeDir")]
+    pub runtime_dir_path: String,
+    #[serde(rename = "computeMode")]
+    pub compute_mode: String,
+    #[serde(rename = "gpuBackend")]
+    pub gpu_backend: String,
+    #[serde(rename = "cudaVersion")]
+    pub cuda_version: String,
+}
+
+#[tauri::command]
+pub fn builtin_llm_runtime_status(
+    state: State<AppState>,
+    options: Option<BuiltinLlmOptions>,
+) -> Result<RuntimeStatusResult, String> {
+    let compute_mode = normalize_compute_mode(options.as_ref().and_then(|o| o.compute_mode.as_deref()));
+    let gpu_backend = normalize_gpu_backend(options.as_ref().and_then(|o| o.gpu_backend.as_deref()));
+    let cuda_version = normalize_cuda_version(options.as_ref().and_then(|o| o.cuda_version.as_deref()));
+
+    let installed = if compute_mode == "gpu" || compute_mode == "hybrid" {
+        let rt = runtime_dir(&state.llm_dir, compute_mode, gpu_backend, cuda_version);
+        find_llama_server(&rt).is_some()
+    } else {
+        runtime_installed(&state.llm_dir, compute_mode, gpu_backend)
+    };
+
+    let rt = runtime_dir(&state.llm_dir, compute_mode, gpu_backend, cuda_version);
+
+    Ok(RuntimeStatusResult {
+        installed,
+        runtime_dir_path: rt.to_string_lossy().to_string(),
+        compute_mode: compute_mode.to_string(),
+        gpu_backend: gpu_backend.to_string(),
+        cuda_version: cuda_version.to_string(),
+    })
+}
+
+#[tauri::command]
+pub fn builtin_llm_import_runtime(
+    state: State<AppState>,
+    paths: Vec<String>,
+    options: Option<BuiltinLlmOptions>,
+) -> Result<(), String> {
+    let compute_mode = normalize_compute_mode(options.as_ref().and_then(|o| o.compute_mode.as_deref()));
+    let gpu_backend = normalize_gpu_backend(options.as_ref().and_then(|o| o.gpu_backend.as_deref()));
+    let cuda_version = normalize_cuda_version(options.as_ref().and_then(|o| o.cuda_version.as_deref()));
+
+    let rt = runtime_dir(&state.llm_dir, compute_mode, gpu_backend, cuda_version);
+    std::fs::create_dir_all(&rt).map_err(|e| e.to_string())?;
+
+    for p in &paths {
+        let zip_path = PathBuf::from(p);
+        safe_zip_extract(&zip_path, &rt)?;
+    }
+
+    if find_llama_server(&rt).is_some() {
+        Ok(())
+    } else {
+        Err("Imported zip(s) do not contain llama-server. For CUDA, import both the llama zip and cudart zip.".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn builtin_llm_delete_runtime(
+    state: State<AppState>,
+    options: Option<BuiltinLlmOptions>,
+) -> Result<(), String> {
+    if state.builtin_llm.is_running() {
+        state.builtin_llm.stop();
+        // Wait a moment for file handles to be released
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    let compute_mode = normalize_compute_mode(options.as_ref().and_then(|o| o.compute_mode.as_deref()));
+    let gpu_backend = normalize_gpu_backend(options.as_ref().and_then(|o| o.gpu_backend.as_deref()));
+    let cuda_version = normalize_cuda_version(options.as_ref().and_then(|o| o.cuda_version.as_deref()));
+
+    let rt = runtime_dir(&state.llm_dir, compute_mode, gpu_backend, cuda_version);
+    if rt.exists() {
+        // Retry delete in case file handles are slow to release
+        let mut last_err = None;
+        for attempt in 0..3 {
+            match std::fs::remove_dir_all(&rt) {
+                Ok(_) => { last_err = None; break; }
+                Err(e) => {
+                    last_err = Some(e);
+                    if attempt < 2 {
+                        std::thread::sleep(Duration::from_millis(500));
+                    }
+                }
+            }
+        }
+        if let Some(e) = last_err {
+            return Err(format!("Failed to delete runtime dir: {}", e));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn builtin_llm_import_model(state: State<'_, AppState>, path: String, options: Option<BuiltinLlmOptions>) -> Result<BuiltinLlmStatus, String> {
+    let mut model_id = options.as_ref().and_then(|o| o.model_id.clone());
+    if model_id.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+        let src = PathBuf::from(&path);
+        if let Some(stem) = src.file_stem().and_then(|s| s.to_str()) {
+            model_id = Some(stem.to_string());
+        }
+    }
+    let model_id = sanitize_model_id(model_id);
+
+    let desired = model_file_path(&state.llm_dir, &model_id);
+    let target = if desired.exists() {
+        let models = models_dir(&state.llm_dir);
+        let base_name = desired.file_name().and_then(|s| s.to_str()).unwrap_or("model.gguf");
+        let stem = Path::new(base_name).file_stem().and_then(|s| s.to_str()).unwrap_or("model");
+        let ext = "gguf";
+        let mut out = desired.clone();
+        for i in 1..=999u32 {
+            let name = format!("{}-{}.{ext}", stem, i);
+            let cand = models.join(name);
+            if !cand.exists() {
+                out = cand;
+                break;
+            }
+        }
+        out
+    } else {
+        desired
+    };
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let src = PathBuf::from(path);
+    std::fs::copy(&src, &target).map_err(|e| e.to_string())?;
+
+    if !file_starts_with(&target, b"GGUF") {
+        let _ = std::fs::remove_file(&target);
+        return Err("imported model is not a GGUF file (signature mismatch)".to_string());
+    }
+
+    Ok(status_from(&state, &model_id))
+}
