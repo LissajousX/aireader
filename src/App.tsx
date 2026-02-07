@@ -399,7 +399,7 @@ function App() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const key = String(e.key || '').toLowerCase();
-      const isDevtools = e.key === 'F12' || (e.ctrlKey && e.shiftKey && key === 'i');
+      const isDevtools = e.key === 'F12' || ((e.ctrlKey || e.metaKey) && e.shiftKey && key === 'i');
       if (!isDevtools) return;
       e.preventDefault();
       e.stopPropagation();

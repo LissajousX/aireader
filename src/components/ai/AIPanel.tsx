@@ -194,7 +194,7 @@ export function AIPanel({ style }: AIPanelProps) {
       setLlmProvider('builtin_local');
       setBuiltinModelId(modelId);
       saveSettings();
-      const rtKey = builtinComputeMode === 'cpu' ? '__rt_cpu' : builtinGpuBackend === 'cuda' ? `__rt_cuda_${builtinCudaVersion}` : '__rt_vulkan';
+      const rtKey = builtinComputeMode === 'cpu' ? '__rt_cpu' : builtinGpuBackend === 'cuda' ? `__rt_cuda_${builtinCudaVersion}` : builtinGpuBackend === 'metal' ? '__rt_metal' : '__rt_vulkan';
       const cudartKey = (builtinComputeMode !== 'cpu' && builtinGpuBackend === 'cuda') ? `__cudart_${builtinCudaVersion}` : '';
       const onProgress = new Channel<{ written: number; total: number | null; label: string }>();
       onProgress.onmessage = () => {};

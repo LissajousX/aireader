@@ -147,6 +147,14 @@ impl BuiltinLlmManager {
                         .output();
                 }
             }
+            #[cfg(not(target_os = "windows"))]
+            {
+                if let Some(pid) = find_pid_by_port(port) {
+                    let _ = Command::new("kill")
+                        .args(["-9", &pid.to_string()])
+                        .output();
+                }
+            }
         }
         *self.port.lock().unwrap() = None;
         *self.model_path.lock().unwrap() = None;
@@ -195,6 +203,18 @@ fn find_pid_by_port(port: u16) -> Option<u32> {
     None
 }
 
+/// Find the PID of a process listening on a given TCP port (macOS / Linux).
+/// Uses `lsof -i :PORT -sTCP:LISTEN -t` which outputs only the PID.
+#[cfg(not(target_os = "windows"))]
+fn find_pid_by_port(port: u16) -> Option<u32> {
+    let output = Command::new("lsof")
+        .args(["-i", &format!(":{}", port), "-sTCP:LISTEN", "-t"])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.trim().lines().next()?.trim().parse::<u32>().ok()
+}
+
 fn normalize_cuda_version(raw: Option<&str>) -> &'static str {
     match raw {
         Some("13.1") => "13.1",
@@ -208,6 +228,8 @@ fn runtime_dir(llm_dir: &Path, compute_mode: &str, gpu_backend: &str, cuda_versi
         "gpu" | "hybrid" => {
             if gpu_backend.eq_ignore_ascii_case("cuda") {
                 base.join(format!("cuda-{cuda_version}"))
+            } else if gpu_backend.eq_ignore_ascii_case("metal") {
+                base.join("metal")
             } else {
                 base.join("vulkan")
             }
@@ -227,7 +249,13 @@ fn normalize_compute_mode(raw: Option<&str>) -> &'static str {
 fn normalize_gpu_backend(raw: Option<&str>) -> &'static str {
     match raw {
         Some("cuda") | Some("CUDA") => "cuda",
-        _ => "vulkan",
+        Some("metal") | Some("Metal") => "metal",
+        _ => {
+            #[cfg(target_os = "macos")]
+            { "metal" }
+            #[cfg(not(target_os = "macos"))]
+            { "vulkan" }
+        }
     }
 }
 
@@ -615,18 +643,110 @@ fn safe_zip_extract_with_progress(
         }
     }
 
+    // On Unix, ensure extracted binaries are executable
+    #[cfg(not(target_os = "windows"))]
+    set_executable_permissions(dest_dir);
+
     Ok(())
 }
 
-/// Auto-extract bundled CPU runtime on first launch (called from setup).
+/// On Unix systems, set executable permissions on extracted binaries.
+#[cfg(not(target_os = "windows"))]
+fn set_executable_permissions(dir: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let executables = ["llama-server", "llama-bench", "server"];
+    for entry in walkdir::WalkDir::new(dir).max_depth(3).into_iter().filter_map(|e| e.ok()) {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        let should_chmod = executables.iter().any(|e| name == *e)
+            || name.starts_with("llama-")
+            || !name.contains('.');
+        if should_chmod {
+            let _ = std::fs::set_permissions(entry.path(), std::fs::Permissions::from_mode(0o755));
+        }
+    }
+}
+
+/// Return the default runtime zip name for the current platform.
+fn default_runtime_zip_name(compute_mode: &str, gpu_backend: &str, cuda_version: &str) -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        match compute_mode {
+            "gpu" | "hybrid" => {
+                if gpu_backend.eq_ignore_ascii_case("cuda") {
+                    if cuda_version == "13.1" {
+                        "llama-b7927-bin-win-cuda-13.1-x64.zip"
+                    } else {
+                        "llama-b7927-bin-win-cuda-12.4-x64.zip"
+                    }
+                } else {
+                    "llama-b7927-bin-win-vulkan-x64.zip"
+                }
+            }
+            _ => "llama-b7927-bin-win-cpu-x64.zip",
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        match compute_mode {
+            "gpu" | "hybrid" => {
+                #[cfg(target_arch = "aarch64")]
+                { "llama-b7927-bin-macos-metal-arm64.zip" }
+                #[cfg(not(target_arch = "aarch64"))]
+                { "llama-b7927-bin-macos-cpu-x64.zip" }
+            }
+            _ => {
+                #[cfg(target_arch = "aarch64")]
+                { "llama-b7927-bin-macos-cpu-arm64.zip" }
+                #[cfg(not(target_arch = "aarch64"))]
+                { "llama-b7927-bin-macos-cpu-x64.zip" }
+            }
+        }
+    }
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        match compute_mode {
+            "gpu" | "hybrid" => {
+                if gpu_backend.eq_ignore_ascii_case("cuda") {
+                    "llama-b7927-bin-linux-cuda-12.4-x64.zip"
+                } else {
+                    "llama-b7927-bin-linux-vulkan-x64.zip"
+                }
+            }
+            _ => "llama-b7927-bin-linux-cpu-x64.zip",
+        }
+    }
+}
+
+/// Return the default download base URL for runtime zips on the current platform.
+fn default_runtime_base_url() -> &'static str {
+    #[cfg(target_os = "macos")]
+    { "https://www.modelscope.cn/datasets/Lissajous/llamacppformacos/resolve/master" }
+    #[cfg(target_os = "windows")]
+    { "https://www.modelscope.cn/datasets/Lissajous/llamacppforwin64/resolve/master" }
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    { "https://www.modelscope.cn/datasets/Lissajous/llamacppforlinux/resolve/master" }
+}
+
+/// Auto-extract bundled runtime on first launch (called from setup).
+/// On macOS ARM uses Metal as the default backend; on other platforms uses CPU.
 /// Silent — logs errors but does not fail the app.
 pub fn auto_install_cpu_runtime(app: &AppHandle, llm_dir: &Path) {
-    let rt = runtime_dir(llm_dir, "cpu", "vulkan", "12.4");
+    let default_backend = normalize_gpu_backend(None);
+    let default_compute = {
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        { "gpu" }
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        { "cpu" }
+    };
+    let rt = runtime_dir(llm_dir, default_compute, default_backend, "12.4");
     if find_llama_server(&rt).is_some() {
         return; // already installed
     }
     let _ = std::fs::create_dir_all(&rt);
-    let zip_name = "llama-b7927-bin-win-cpu-x64.zip";
+    let zip_name = default_runtime_zip_name(default_compute, default_backend, "12.4");
     if let Ok(resource_dir) = app.path().resource_dir() {
         let candidates = [
             resource_dir.join("llm").join("runtime").join(zip_name),
@@ -636,11 +756,11 @@ pub fn auto_install_cpu_runtime(app: &AppHandle, llm_dir: &Path) {
             if z.exists() {
                 match safe_zip_extract(&z, &rt) {
                     Ok(_) => {
-                        println!("[builtin_llm] CPU runtime auto-extracted from {}", z.display());
+                        println!("[builtin_llm] Runtime auto-extracted from {}", z.display());
                         return;
                     }
                     Err(e) => {
-                        eprintln!("[builtin_llm] Failed to extract CPU runtime: {}", e);
+                        eprintln!("[builtin_llm] Failed to extract runtime: {}", e);
                     }
                 }
             }
@@ -736,21 +856,9 @@ async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode:
         }
     }
 
-    let zip_name = match compute_mode {
-        "gpu" | "hybrid" => {
-            if gpu_backend.eq_ignore_ascii_case("cuda") {
-                if cuda_version == "13.1" {
-                    "llama-b7927-bin-win-cuda-13.1-x64.zip"
-                } else {
-                    "llama-b7927-bin-win-cuda-12.4-x64.zip"
-                }
-            } else {
-                "llama-b7927-bin-win-vulkan-x64.zip"
-            }
-        }
-        _ => "llama-b7927-bin-win-cpu-x64.zip",
-    };
+    let zip_name = default_runtime_zip_name(compute_mode, gpu_backend, cuda_version);
 
+    // CUDA runtime (cudart) is only needed on Windows/Linux with CUDA backend
     let cudart_name = if (compute_mode == "gpu" || compute_mode == "hybrid") && gpu_backend.eq_ignore_ascii_case("cuda") {
         if cuda_version == "13.1" {
             Some("cudart-llama-bin-win-cuda-13.1-x64.zip")
@@ -804,7 +912,7 @@ async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode:
     }
 
     // Fallback: download runtime zip and extract
-    let default_base = "https://www.modelscope.cn/datasets/Lissajous/llamacppforwin64/resolve/master";
+    let default_base = default_runtime_base_url();
     let default_runtime_url = format!("{}/{}", default_base, zip_name);
     let runtime_url = custom_runtime_url
         .filter(|s| !s.is_empty())
@@ -1070,6 +1178,60 @@ fn probe_vram_bytes_windows() -> Option<u64> {
     None
 }
 
+/// On macOS Apple Silicon, GPU shares unified memory with CPU.
+/// We report a fraction of total RAM as "VRAM" for tier calculations.
+/// On Intel Macs, try system_profiler for discrete GPU VRAM.
+#[cfg(target_os = "macos")]
+fn probe_vram_bytes_macos() -> Option<u64> {
+    // Try system_profiler for discrete GPU VRAM
+    let out = Command::new("system_profiler")
+        .args(["SPDisplaysDataType"])
+        .output()
+        .ok()?;
+    if out.status.success() {
+        let text = String::from_utf8_lossy(&out.stdout);
+        // Look for "VRAM (Total):" or "VRAM (Dynamic, Max):" lines
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if trimmed.contains("VRAM") && trimmed.contains(':') {
+                // e.g. "VRAM (Total): 8 GB" or "VRAM (Dynamic, Max): 67.67 GB"
+                if let Some(after_colon) = trimmed.split(':').nth(1) {
+                    let after = after_colon.trim().to_ascii_lowercase();
+                    // Parse numeric value
+                    let num_str: String = after.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+                    if let Ok(val) = num_str.parse::<f64>() {
+                        let bytes = if after.contains("gb") {
+                            (val * 1024.0 * 1024.0 * 1024.0) as u64
+                        } else if after.contains("mb") {
+                            (val * 1024.0 * 1024.0) as u64
+                        } else {
+                            val as u64
+                        };
+                        if bytes > 0 {
+                            return Some(bytes);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Fallback for Apple Silicon: use 75% of total RAM as effective GPU memory
+    // (unified memory architecture)
+    let mut sys = System::new_all();
+    sys.refresh_memory();
+    let total = sys.total_memory();
+    if total > 0 {
+        Some(total * 3 / 4)
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn probe_vram_bytes_macos() -> Option<u64> {
+    None
+}
+
 #[cfg(not(target_os = "windows"))]
 fn probe_vram_bytes_unix() -> Option<u64> {
     probe_vram_bytes_from_nvidia_smi()
@@ -1081,7 +1243,9 @@ fn probe_vram_bytes_unix() -> Option<u64> {
 }
 
 fn probe_vram_bytes() -> Option<u64> {
-    probe_vram_bytes_windows().or_else(probe_vram_bytes_unix)
+    probe_vram_bytes_windows()
+        .or_else(probe_vram_bytes_macos)
+        .or_else(probe_vram_bytes_unix)
 }
 
 fn cap_tier_by_vram(mut tier: i32, vram_bytes: Option<u64>) -> i32 {
@@ -1124,6 +1288,10 @@ pub struct BuiltinProbeResult {
     pub has_cuda: bool,
     #[serde(rename = "hasVulkan")]
     pub has_vulkan: bool,
+    #[serde(rename = "hasMetal")]
+    pub has_metal: bool,
+    #[serde(rename = "isAppleSilicon")]
+    pub is_apple_silicon: bool,
 }
 
 fn probe_gpu_name() -> Option<String> {
@@ -1162,12 +1330,50 @@ fn probe_gpu_name() -> Option<String> {
             }
         }
     }
+    #[cfg(target_os = "macos")]
+    {
+        // Try system_profiler to get chipset/GPU info
+        let out = Command::new("system_profiler")
+            .args(["SPDisplaysDataType"])
+            .output()
+            .ok()?;
+        if out.status.success() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            // Look for "Chipset Model:" line
+            for line in text.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("Chipset Model:") {
+                    let name = trimmed.trim_start_matches("Chipset Model:").trim();
+                    if !name.is_empty() {
+                        return Some(name.to_string());
+                    }
+                }
+            }
+        }
+        // Fallback: use sysctl for Apple Silicon chip name
+        let out = Command::new("sysctl")
+            .args(["-n", "machdep.cpu.brand_string"])
+            .output()
+            .ok()?;
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if s.contains("Apple") {
+                return Some(s);
+            }
+        }
+    }
     None
 }
 
 /// Check if the detected GPU is worth using for LLM inference.
 /// Returns false for integrated GPUs with low VRAM, virtual display drivers, etc.
-fn is_gpu_worth_using(gpu_name: &Option<String>, vram_bytes: Option<u64>) -> bool {
+/// Apple Silicon always returns true (Metal with unified memory is excellent for LLM).
+fn is_gpu_worth_using(gpu_name: &Option<String>, vram_bytes: Option<u64>, is_apple_silicon: bool) -> bool {
+    // Apple Silicon: unified memory + Metal = always worth using
+    if is_apple_silicon {
+        return true;
+    }
+
     let vram_gb = vram_bytes.unwrap_or(0) / 1024 / 1024 / 1024;
 
     // VRAM < 2GB: definitely not worth it (integrated GPU territory)
@@ -1191,6 +1397,14 @@ fn is_gpu_worth_using(gpu_name: &Option<String>, vram_bytes: Option<u64>) -> boo
     true
 }
 
+/// Detect if running on Apple Silicon (aarch64 macOS).
+fn detect_apple_silicon() -> bool {
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    { true }
+    #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+    { false }
+}
+
 #[tauri::command]
 pub fn builtin_llm_probe_system() -> Result<BuiltinProbeResult, String> {
     let mut sys = System::new_all();
@@ -1202,8 +1416,26 @@ pub fn builtin_llm_probe_system() -> Result<BuiltinProbeResult, String> {
     let cpu_cores = sys.cpus().len();
     let cpu_brand = sys.cpus().first().map(|c| c.brand().to_string()).unwrap_or_default();
 
-    let has_vulkan = unsafe { Library::new("vulkan-1.dll") }.is_ok();
-    let has_cuda = unsafe { Library::new("nvcuda.dll") }.is_ok();
+    let is_apple_silicon = detect_apple_silicon();
+
+    // Platform-specific GPU backend detection
+    #[cfg(target_os = "windows")]
+    let (has_vulkan, has_cuda) = (
+        unsafe { Library::new("vulkan-1.dll") }.is_ok(),
+        unsafe { Library::new("nvcuda.dll") }.is_ok(),
+    );
+    #[cfg(target_os = "macos")]
+    let (has_vulkan, has_cuda) = (false, false);
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    let (has_vulkan, has_cuda) = (
+        unsafe { Library::new("libvulkan.so.1") }.is_ok(),
+        unsafe { Library::new("libcuda.so.1") }.is_ok()
+            || unsafe { Library::new("libcuda.so") }.is_ok(),
+    );
+
+    // Metal is always available on macOS 10.14+
+    let has_metal = cfg!(target_os = "macos");
+
     let vram_bytes = probe_vram_bytes();
     let gpu_name = probe_gpu_name();
 
@@ -1215,6 +1447,8 @@ pub fn builtin_llm_probe_system() -> Result<BuiltinProbeResult, String> {
         gpu_name,
         has_cuda,
         has_vulkan,
+        has_metal,
+        is_apple_silicon,
     })
 }
 
@@ -1360,15 +1594,19 @@ pub fn builtin_llm_recommend(options: Option<BuiltinRecommendOptions>) -> Result
     let preferred_compute = normalize_preferred_compute(options.as_ref().and_then(|o| o.preferred_compute.as_deref()));
     let cuda_version = normalize_cuda_version(options.as_ref().and_then(|o| o.cuda_version.as_deref()));
 
-    let gpu_useful = is_gpu_worth_using(&probe.gpu_name, probe.vram_bytes);
+    let gpu_useful = is_gpu_worth_using(&probe.gpu_name, probe.vram_bytes, probe.is_apple_silicon);
 
     let (compute_mode, gpu_backend) = if let Some(pc) = preferred_compute {
         let backend = if (pc == "gpu" || pc == "hybrid") && probe.has_cuda {
             "cuda"
+        } else if (pc == "gpu" || pc == "hybrid") && probe.has_metal {
+            "metal"
         } else {
-            "vulkan"
+            normalize_gpu_backend(None)
         };
         (pc.to_string(), backend.to_string())
+    } else if probe.has_metal && gpu_useful {
+        ("gpu".to_string(), "metal".to_string())
     } else if probe.has_cuda && gpu_useful {
         ("gpu".to_string(), "cuda".to_string())
     } else if probe.has_vulkan && gpu_useful {
@@ -1413,13 +1651,22 @@ pub async fn builtin_llm_auto_start(
     let preferred_tier = parse_preferred_tier(options.as_ref().and_then(|o| o.preferred_tier.as_deref()));
     let preferred_compute = normalize_preferred_compute(options.as_ref().and_then(|o| o.preferred_compute.as_deref()));
 
-    let gpu_useful = is_gpu_worth_using(&probe.gpu_name, probe.vram_bytes);
+    let gpu_useful = is_gpu_worth_using(&probe.gpu_name, probe.vram_bytes, probe.is_apple_silicon);
 
     let mut compute_candidates: Vec<(&'static str, &'static str)> = vec![];
     if let Some(pc) = preferred_compute {
-        let backend = if (pc == "gpu" || pc == "hybrid") && probe.has_cuda { "cuda" } else { "vulkan" };
+        let backend = if (pc == "gpu" || pc == "hybrid") && probe.has_cuda {
+            "cuda"
+        } else if (pc == "gpu" || pc == "hybrid") && probe.has_metal {
+            "metal"
+        } else {
+            normalize_gpu_backend(None)
+        };
         compute_candidates.push((pc, backend));
     } else {
+        if probe.has_metal && gpu_useful {
+            compute_candidates.push(("gpu", "metal"));
+        }
         if probe.has_cuda && gpu_useful {
             compute_candidates.push(("gpu", "cuda"));
         }

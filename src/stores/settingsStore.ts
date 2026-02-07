@@ -39,7 +39,7 @@ interface SettingsState {
   builtinPreferredTier: 'auto' | 0 | 1 | 2 | 3;
   builtinPreferredCompute: 'auto' | 'cpu' | 'gpu' | 'hybrid';
   builtinComputeMode: 'cpu' | 'gpu' | 'hybrid';
-  builtinGpuBackend: 'vulkan' | 'cuda';
+  builtinGpuBackend: 'vulkan' | 'cuda' | 'metal';
   builtinGpuLayers: number;
   builtinCudaVersion: '12.4' | '13.1';
   openAICompatibleBaseUrl: string;
@@ -63,7 +63,7 @@ interface SettingsState {
   setBuiltinPreferredTier: (tier: 'auto' | 0 | 1 | 2 | 3) => void;
   setBuiltinPreferredCompute: (mode: 'auto' | 'cpu' | 'gpu' | 'hybrid') => void;
   setBuiltinComputeMode: (mode: 'cpu' | 'gpu' | 'hybrid') => void;
-  setBuiltinGpuBackend: (backend: 'vulkan' | 'cuda') => void;
+  setBuiltinGpuBackend: (backend: 'vulkan' | 'cuda' | 'metal') => void;
   setBuiltinGpuLayers: (layers: number) => void;
   setBuiltinCudaVersion: (v: '12.4' | '13.1') => void;
   setOpenAICompatibleBaseUrl: (url: string) => void;
@@ -283,7 +283,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if ((saved as any).builtinComputeMode === 'gpu' || (saved as any).builtinComputeMode === 'hybrid' || (saved as any).builtinComputeMode === 'cpu') {
       set({ builtinComputeMode: (saved as any).builtinComputeMode });
     }
-    if ((saved as any).builtinGpuBackend === 'cuda' || (saved as any).builtinGpuBackend === 'vulkan') {
+    if ((saved as any).builtinGpuBackend === 'cuda' || (saved as any).builtinGpuBackend === 'vulkan' || (saved as any).builtinGpuBackend === 'metal') {
       set({ builtinGpuBackend: (saved as any).builtinGpuBackend });
     }
     if ((saved as any).builtinGpuLayers !== undefined) {

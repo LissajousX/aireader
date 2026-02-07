@@ -32,8 +32,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "targets": ["nsis", "dmg"],
+    "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
     "resources": ["resources/"],
     "windows": {
       "nsis": {
@@ -41,6 +41,11 @@
         "languages": ["SimpChinese", "English"],
         "installMode": "both"
       }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "frameworks": [],
+      "exceptionDomain": ""
     }
   },
   "plugins": {}

@@ -85,7 +85,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'error'>('unknown');
 
   type BuiltinStatus = { runtimeInstalled: boolean; modelInstalled: boolean; modelId?: string; running: boolean; baseUrl?: string | null; runningModelId?: string | null; runningThisModel?: boolean };
-  type BuiltinProbe = { cpuCores: number; cpuBrand?: string; totalMemoryBytes: number; vramBytes?: number | null; gpuName?: string | null; hasCuda: boolean; hasVulkan: boolean };
+  type BuiltinProbe = { cpuCores: number; cpuBrand?: string; totalMemoryBytes: number; vramBytes?: number | null; gpuName?: string | null; hasCuda: boolean; hasVulkan: boolean; hasMetal: boolean; isAppleSilicon: boolean };
   type BuiltinRecommendResult = { recommendedModelId: string; recommendedComputeMode: string; recommendedGpuBackend: string; recommendedCudaVersion: string; probe: BuiltinProbe };
   type BenchmarkResult = { tokensPerSecond: number; completionTokens: number; elapsedMs: number; recommendedTier: number; recommendedModelId: string };
   type RuntimeStatus = { installed: boolean; runtimeDir: string; computeMode: string; gpuBackend: string; cudaVersion: string };
@@ -1320,7 +1320,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                               </div>
                             )}
                             <div>
-                              {b('加速支持', 'Acceleration')}: {[builtinRecommend.probe.hasCuda ? 'CUDA ✓' : null, builtinRecommend.probe.hasVulkan ? 'Vulkan ✓' : null].filter(Boolean).join(' · ') || b('无', 'None')}
+                              {b('加速支持', 'Acceleration')}: {[builtinRecommend.probe.hasMetal ? 'Metal ✓' : null, builtinRecommend.probe.hasCuda ? 'CUDA ✓' : null, builtinRecommend.probe.hasVulkan ? 'Vulkan ✓' : null].filter(Boolean).join(' · ') || b('无', 'None')}
                             </div>
                             {benchmarkResult && (
                               <div className="pt-0.5 border-t border-border/30 mt-1">
@@ -1455,6 +1455,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                             <select value={builtinGpuBackend} onChange={(e) => handleHardwareChange(() => setBuiltinGpuBackend(e.target.value as any))} disabled={builtinComputeMode === 'cpu'} className="w-full px-2 py-1 border border-border rounded-lg bg-background text-foreground text-xs disabled:opacity-50">
                               <option value="vulkan">Vulkan</option>
                               <option value="cuda">CUDA</option>
+                              <option value="metal">Metal (macOS)</option>
                             </select>
                           </div>
                           <div>
