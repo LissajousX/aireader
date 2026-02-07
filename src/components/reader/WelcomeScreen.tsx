@@ -1,4 +1,4 @@
-import { BookOpen, FileText, Sparkles, StickyNote, MessageSquareText, Languages, Library, Settings, HelpCircle, FolderOpen, Menu, Moon, Sun } from "lucide-react";
+import { BookOpen, FileText, Sparkles, StickyNote, MessageSquareText, Languages, Library, Settings, HelpCircle, FolderOpen, Menu, Moon, Sun, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useDocumentStore } from "@/stores/documentStore";
@@ -10,12 +10,14 @@ interface WelcomeScreenProps {
   onImportFolder: () => void;
   isDark?: boolean;
   onToggleTheme?: () => void;
+  aiAutoStartFailed?: boolean;
 }
 
-export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleTheme }: WelcomeScreenProps) {
+export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleTheme, aiAutoStartFailed }: WelcomeScreenProps) {
   const { t } = useI18n();
-  const { uiLanguage, setUiLanguage, saveSettings } = useSettingsStore();
-  const { openLibrary, openSettings, openHelp, toggleSidebar, toggleAIPanel } = useDocumentStore();
+  const { uiLanguage, setUiLanguage, saveSettings, builtinAutoEnabled, llmProvider } = useSettingsStore();
+  const aiNotConfigured = !builtinAutoEnabled || llmProvider !== 'builtin_local';
+  const { openLibrary, openSettings, openSettingsTab, openHelp, toggleSidebar, toggleAIPanel } = useDocumentStore();
 
   const handleSwitchLang = (lang: "zh" | "en") => {
     setUiLanguage(lang);
@@ -137,6 +139,21 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
               </div>
             </button>
           </div>
+
+          {/* Auto-start failure warning */}
+          {aiAutoStartFailed && !aiNotConfigured && (
+            <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/[0.05] px-4 py-3 flex items-center gap-3">
+              <AlertTriangle className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+              <div className="text-xs text-muted-foreground">
+                {uiLanguage === 'zh'
+                  ? 'AI 自动启动失败，请打开设置重新配置。'
+                  : 'AI auto-start failed. Please open Settings to reconfigure.'}
+              </div>
+              <Button variant="outline" size="sm" className="ml-auto flex-shrink-0 h-7 text-xs" onClick={() => openSettingsTab('ai')}>
+                {uiLanguage === 'zh' ? '设置' : 'Settings'}
+              </Button>
+            </div>
+          )}
 
           {/* Feature cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

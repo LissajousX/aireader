@@ -602,7 +602,7 @@ fn normalize_ecdict_sqlite(root: &Path) -> Result<Option<PathBuf>, String> {
 
 #[tauri::command]
 pub fn cedict_status(state: State<AppState>) -> Result<DictionaryStatus, String> {
-    let root = cedict_root(&state.dictionaries_dir);
+    let root = cedict_root(&state.dictionaries_dir.read().unwrap());
     let db_path = cedict_db_path(&root);
     if db_path.exists() {
         state.cedict.set_db_path(db_path.clone());
@@ -623,7 +623,7 @@ pub async fn cedict_install(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<DictionaryStatus, String> {
-    let root = cedict_root(&state.dictionaries_dir);
+    let root = cedict_root(&state.dictionaries_dir.read().unwrap());
     std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
 
     let db_path = cedict_db_path(&root);
@@ -716,7 +716,7 @@ pub fn cedict_lookup(state: State<AppState>, word: String) -> Result<Option<Dict
     }
 
     if state.cedict.get_db_path().is_none() {
-        let root = cedict_root(&state.dictionaries_dir);
+        let root = cedict_root(&state.dictionaries_dir.read().unwrap());
         let db_path = cedict_db_path(&root);
         if db_path.exists() {
             state.cedict.set_db_path(db_path);
@@ -728,7 +728,7 @@ pub fn cedict_lookup(state: State<AppState>, word: String) -> Result<Option<Dict
 
 #[tauri::command]
 pub fn dictionary_status(state: State<AppState>) -> Result<DictionaryStatus, String> {
-    let root = ecdict_root(&state.dictionaries_dir);
+    let root = ecdict_root(&state.dictionaries_dir.read().unwrap());
     let ifo = find_first_ifo(&root);
 
     if let Some(ifo_path) = ifo {
@@ -767,7 +767,7 @@ pub async fn dictionary_install_ecdict(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<DictionaryStatus, String> {
-    let root = ecdict_root(&state.dictionaries_dir);
+    let root = ecdict_root(&state.dictionaries_dir.read().unwrap());
     std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
 
     // If already installed, return status
@@ -937,7 +937,7 @@ pub fn dictionary_lookup(state: State<AppState>, word: String) -> Result<Option<
 
     // Ensure ifo/db path is populated if already installed
     if state.dictionary.get_ifo_path().is_none() && state.dictionary.get_db_path().is_none() {
-        let root = ecdict_root(&state.dictionaries_dir);
+        let root = ecdict_root(&state.dictionaries_dir.read().unwrap());
         if let Some(ifo_path) = find_first_ifo(&root) {
             state.dictionary.set_ifo_path(ifo_path);
         } else {
@@ -1002,4 +1002,75 @@ pub fn dictionary_lookup(state: State<AppState>, word: String) -> Result<Option<
         translation,
         meanings,
     }))
+}
+
+/// Auto-prepare dictionaries on first launch (background, non-blocking).
+/// Extracts bundled archives if the SQLite databases don't already exist.
+/// Does NOT set DictionaryManager/CedictManager paths — lookup functions do that lazily.
+pub fn auto_prepare_dictionaries(app_handle: &AppHandle, dictionaries_dir: &Path) {
+    let app = app_handle.clone();
+    let dict_dir = dictionaries_dir.to_path_buf();
+    std::thread::spawn(move || {
+        // --- ECDICT (EN→ZH) ---
+        let ecdict_r = ecdict_root(&dict_dir);
+        let _ = std::fs::create_dir_all(&ecdict_r);
+        let ecdict_db = ecdict_db_path(&ecdict_r);
+        let ecdict_ifo = find_first_ifo(&ecdict_r);
+        if !ecdict_db.exists() && ecdict_ifo.is_none() {
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                let candidates = [
+                    resource_dir.join("dictionaries").join("ecdict").join("stardict.7z"),
+                    resource_dir.join("resources").join("dictionaries").join("ecdict").join("stardict.7z"),
+                ];
+                for archive in candidates {
+                    if archive.exists() {
+                        if sevenz_rust2::decompress_file(&archive, &ecdict_r).is_ok() {
+                            // If CSV was extracted, build SQLite
+                            let csv_path = ecdict_r.join("stardict.csv");
+                            if csv_path.exists() && !ecdict_db.exists() {
+                                let _ = build_sqlite_from_csv(&csv_path, &ecdict_db);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // --- CC-CEDICT (ZH→EN) ---
+        let cedict_r = cedict_root(&dict_dir);
+        let _ = std::fs::create_dir_all(&cedict_r);
+        let cedict_db = cedict_db_path(&cedict_r);
+        if !cedict_db.exists() {
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                let candidates = [
+                    resource_dir.join("dictionaries").join("cedict").join("cedict.zip"),
+                    resource_dir.join("resources").join("dictionaries").join("cedict").join("cedict.zip"),
+                    resource_dir.join("dictionaries").join("cedict").join("cedict.7z"),
+                    resource_dir.join("resources").join("dictionaries").join("cedict").join("cedict.7z"),
+                    resource_dir.join("dictionaries").join("cedict").join("cedict_ts.u8"),
+                    resource_dir.join("resources").join("dictionaries").join("cedict").join("cedict_ts.u8"),
+                ];
+                let mut extracted = false;
+                for c in candidates {
+                    if !c.exists() { continue; }
+                    let name = c.file_name().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
+                    if name.ends_with(".7z") {
+                        if sevenz_rust2::decompress_file(&c, &cedict_r).is_ok() { extracted = true; }
+                    } else if name.ends_with(".zip") {
+                        if extract_zip_to(&c, &cedict_r).is_ok() { extracted = true; }
+                    } else if name.ends_with(".u8") {
+                        let _ = std::fs::copy(&c, cedict_r.join("cedict_ts.u8"));
+                        extracted = true;
+                    }
+                    if extracted { break; }
+                }
+                if extracted {
+                    if let Some(u8_path) = find_first_u8(&cedict_r) {
+                        let _ = build_cedict_sqlite_from_u8(&u8_path, &cedict_db);
+                    }
+                }
+            }
+        }
+    });
 }

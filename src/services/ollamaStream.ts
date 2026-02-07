@@ -1,5 +1,5 @@
 import { useSettingsStore } from "@/stores/settingsStore";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, Channel } from "@tauri-apps/api/core";
 
 interface StreamCallbacks {
   onThinking?: (text: string) => void;
@@ -321,74 +321,29 @@ export async function streamGenerate(
 
     const modelName = settings.ollamaModel;
     const finalPrompt = thinkingResolved.promptToSend;
-    // Use /api/chat with messages array for multi-turn, /api/generate for single prompt
     const useChat = !!(options?.messages && options.messages.length > 0);
-    const ollamaUrl = useChat
-      ? `${settings.ollamaUrl}/api/chat`
-      : `${settings.ollamaUrl}/api/generate`;
-    const ollamaBody = useChat
-      ? { model: modelName, messages: options!.messages, stream: true }
-      : { model: modelName, prompt: finalPrompt, stream: true };
 
-    response = await fetch(ollamaUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      signal: options?.signal,
-      body: JSON.stringify(ollamaBody),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Ollama 请求失败: ${response.status}`);
-    }
-
-    reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error("无法获取响应流");
-    }
-    let buffer = "";
-    let thinkingContent = "";
-    let mainContent = "";
+    // Use Rust backend proxy to bypass WebView CORS restrictions
     let doneCalled = false;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        
-        try {
-          const data = JSON.parse(line) as any;
-          
-          // Ollama thinking field (both /api/generate and /api/chat)
-          const thinkDelta = data.thinking || data.message?.thinking || '';
-          if (thinkingResolved.thinking && thinkDelta) {
-            thinkingContent += thinkDelta;
-            callbacks.onThinking?.(thinkingContent);
-          }
-
-          // Content: /api/generate uses data.response, /api/chat uses data.message.content
-          const contentDelta = data.response || data.message?.content || '';
-          if (contentDelta) {
-            mainContent += contentDelta;
-            callbacks.onContent?.(mainContent);
-          }
-
-          if (data.done && !doneCalled) {
-            doneCalled = true;
-            callbacks.onDone?.();
-          }
-        } catch {
-          // ignore JSON parse errors
-        }
+    const onChunk = new Channel<{ kind: string; text: string }>();
+    onChunk.onmessage = (msg) => {
+      if (msg.kind === 'thinking') {
+        if (thinkingResolved.thinking) callbacks.onThinking?.(msg.text);
+      } else if (msg.kind === 'content') {
+        callbacks.onContent?.(msg.text);
+      } else if (msg.kind === 'done' && !doneCalled) {
+        doneCalled = true;
+        callbacks.onDone?.();
       }
-    }
+    };
+
+    await invoke('ollama_stream_chat', {
+      baseUrl: settings.ollamaUrl,
+      model: modelName,
+      prompt: useChat ? null : finalPrompt,
+      messages: useChat ? options!.messages : null,
+      onChunk,
+    });
 
     if (!doneCalled) {
       callbacks.onDone?.();

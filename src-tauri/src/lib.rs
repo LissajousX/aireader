@@ -1,4 +1,5 @@
 mod ollama;
+mod ollama_proxy;
 mod database;
 mod dictionary;
 mod builtin_llm;
@@ -18,6 +19,7 @@ use dictionary::{
 };
 use builtin_llm::{
     builtin_llm_auto_start,
+    builtin_llm_benchmark,
     builtin_llm_cancel_download,
     builtin_llm_delete_model,
     builtin_llm_delete_runtime,
@@ -37,6 +39,7 @@ use builtin_llm::{
 use epub::epub_extract;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::RwLock;
 use std::path::PathBuf;
 use std::io::Write;
 use std::path::Path;
@@ -253,12 +256,14 @@ fn import_markdown_copy_impl(dest_dir: &Path, source_path: &str) -> Result<Strin
 
 struct AppState {
     db: Arc<Database>,
+    app_data_dir: PathBuf,
     log_dir: PathBuf,
-    documents_dir: PathBuf,
-    dictionaries_dir: PathBuf,
+    documents_dir: RwLock<PathBuf>,
+    dictionaries_dir: RwLock<PathBuf>,
     dictionary: DictionaryManager,
     cedict: CedictManager,
-    llm_dir: PathBuf,
+    llm_dir: PathBuf,           // fixed: app_data_dir/llm — runtime only
+    models_dir: RwLock<PathBuf>, // user-configurable: model storage
     builtin_llm: BuiltinLlmManager,
     download_cancel: std::sync::atomic::AtomicBool,
     log_lock: Mutex<()>,
@@ -388,16 +393,101 @@ fn open_devtools(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn get_app_data_dir(state: State<AppState>) -> Result<String, String> {
-    let p = state
-        .log_dir
-        .parent()
-        .ok_or_else(|| "invalid app data dir".to_string())?;
-    Ok(p.to_string_lossy().to_string())
+    Ok(state.app_data_dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]
 fn get_documents_dir(state: State<AppState>) -> Result<String, String> {
-    Ok(state.documents_dir.to_string_lossy().to_string())
+    Ok(state.documents_dir.read().unwrap().to_string_lossy().to_string())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AppConfigInput {
+    documents_dir: Option<String>,
+    models_dir: Option<String>,
+    dictionaries_dir: Option<String>,
+    /// If true, migrate model files from old models_dir to new one
+    migrate_models: Option<bool>,
+}
+
+#[tauri::command]
+fn get_app_config(state: State<AppState>) -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({
+        "documentsDir": state.documents_dir.read().unwrap().to_string_lossy(),
+        "modelsDir": state.models_dir.read().unwrap().to_string_lossy(),
+        "dictionariesDir": state.dictionaries_dir.read().unwrap().to_string_lossy(),
+    }))
+}
+
+#[tauri::command]
+fn save_app_config(state: State<AppState>, config: AppConfigInput) -> Result<(), String> {
+    let config_path = state.app_data_dir.join("config.json");
+
+    // Read existing config or start fresh
+    let mut json: serde_json::Value = std::fs::read_to_string(&config_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+
+    let obj = json.as_object_mut().ok_or("config is not an object")?;
+
+    // Update documents_dir
+    if let Some(ref d) = config.documents_dir {
+        let p = PathBuf::from(d);
+        std::fs::create_dir_all(&p).map_err(|e| e.to_string())?;
+        obj.insert("documentsDir".to_string(), serde_json::Value::String(d.clone()));
+        *state.documents_dir.write().unwrap() = p;
+    }
+
+    // Update models_dir
+    if let Some(ref d) = config.models_dir {
+        let new_dir = PathBuf::from(d);
+        std::fs::create_dir_all(&new_dir).map_err(|e| e.to_string())?;
+
+        // Stop LLM if running since model dir changed
+        state.builtin_llm.stop();
+
+        // Migrate model files if requested
+        if config.migrate_models.unwrap_or(false) {
+            let old_dir = state.models_dir.read().unwrap().clone();
+            if old_dir != new_dir && old_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&old_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().and_then(|e| e.to_str()) == Some("gguf") {
+                            let dest = new_dir.join(path.file_name().unwrap());
+                            if !dest.exists() {
+                                let _ = std::fs::rename(&path, &dest)
+                                    .or_else(|_| std::fs::copy(&path, &dest).map(|_| ()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        obj.insert("modelsDir".to_string(), serde_json::Value::String(d.clone()));
+        // Remove legacy llmDir key if present
+        obj.remove("llmDir");
+        *state.models_dir.write().unwrap() = new_dir;
+    }
+
+    // Update dictionaries_dir
+    if let Some(ref d) = config.dictionaries_dir {
+        let p = PathBuf::from(d);
+        std::fs::create_dir_all(&p).map_err(|e| e.to_string())?;
+        obj.insert("dictionariesDir".to_string(), serde_json::Value::String(d.clone()));
+        state.dictionary.reset();
+        state.cedict.reset();
+        *state.dictionaries_dir.write().unwrap() = p;
+    }
+
+    // Write config.json
+    let content = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
+    std::fs::write(&config_path, content).map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -448,9 +538,10 @@ fn reset_app_data(state: State<AppState>) -> Result<(), String> {
 
     let dirs = [
         state.log_dir.clone(),
-        state.documents_dir.clone(),
-        state.dictionaries_dir.clone(),
+        state.documents_dir.read().unwrap().clone(),
+        state.dictionaries_dir.read().unwrap().clone(),
         state.llm_dir.clone(),
+        state.models_dir.read().unwrap().clone(),
     ];
 
     for d in dirs {
@@ -459,6 +550,10 @@ fn reset_app_data(state: State<AppState>) -> Result<(), String> {
         }
         let _ = std::fs::create_dir_all(&d);
     }
+
+    // Delete config.json to reset directory paths
+    let config_path = state.app_data_dir.join("config.json");
+    let _ = std::fs::remove_file(&config_path);
 
     Ok(())
 }
@@ -474,7 +569,7 @@ fn import_document_copy(
         std::fs::create_dir_all(&p).map_err(|e| e.to_string())?;
         p
     } else {
-        state.documents_dir.clone()
+        state.documents_dir.read().unwrap().clone()
     };
     import_document_copy_impl(&base, &source_path)
 }
@@ -490,7 +585,7 @@ fn import_markdown_copy(
         std::fs::create_dir_all(&p).map_err(|e| e.to_string())?;
         p
     } else {
-        state.documents_dir.clone()
+        state.documents_dir.read().unwrap().clone()
     };
     import_markdown_copy_impl(&base, &source_path)
 }
@@ -511,7 +606,7 @@ fn import_folder_copies(
         std::fs::create_dir_all(&p).map_err(|e| e.to_string())?;
         p
     } else {
-        state.documents_dir.clone()
+        state.documents_dir.read().unwrap().clone()
     };
 
     let mut out: Vec<String> = vec![];
@@ -568,7 +663,7 @@ fn delete_document_copy(
     documents_dir: Option<String>,
 ) -> Result<(), String> {
     let mut roots: Vec<PathBuf> = vec![];
-    let default_root = std::fs::canonicalize(&state.documents_dir).map_err(|e| e.to_string())?;
+    let default_root = std::fs::canonicalize(&*state.documents_dir.read().unwrap()).map_err(|e| e.to_string())?;
     roots.push(default_root);
 
     if let Some(d) = documents_dir {
@@ -708,7 +803,7 @@ fn import_samples(
         std::fs::create_dir_all(&p).map_err(|e| e.to_string())?;
         p
     } else {
-        state.documents_dir.clone()
+        state.documents_dir.read().unwrap().clone()
     };
 
     let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
@@ -756,6 +851,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_http::init())
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir().expect("failed to get app data dir");
             let db = Database::new(app_data_dir.clone()).expect("failed to init database");
@@ -775,22 +871,45 @@ pub fn run() {
                 .and_then(|v| v.as_str())
                 .map(PathBuf::from)
                 .unwrap_or_else(|| app_data_dir.join("dictionaries"));
-            let llm_dir = config.get("llmDir")
+            // Runtime dir is always fixed at app_data_dir/llm (not user-configurable)
+            let llm_dir = app_data_dir.join("llm");
+            // Models dir is user-configurable; check modelsDir first, then legacy llmDir/models
+            let models_dir = config.get("modelsDir")
                 .and_then(|v| v.as_str())
                 .map(PathBuf::from)
-                .unwrap_or_else(|| app_data_dir.join("llm"));
+                .or_else(|| {
+                    // Backward compat: old config had llmDir — models were in llmDir/models
+                    config.get("llmDir")
+                        .and_then(|v| v.as_str())
+                        .map(|d| PathBuf::from(d).join("models"))
+                })
+                .unwrap_or_else(|| llm_dir.join("models"));
             std::fs::create_dir_all(&log_dir).ok();
             std::fs::create_dir_all(&documents_dir).ok();
             std::fs::create_dir_all(&dictionaries_dir).ok();
             std::fs::create_dir_all(&llm_dir).ok();
+            // models_dir is created on demand (when downloading/listing models)
+            // Auto-prepare dictionaries in background on first launch
+            dictionary::auto_prepare_dictionaries(&app.handle(), &dictionaries_dir);
+            // Auto-extract bundled CPU runtime on first launch
+            {
+                let handle = app.handle().clone();
+                let llm_dir_clone = llm_dir.clone();
+                std::thread::spawn(move || {
+                    builtin_llm::auto_install_cpu_runtime(&handle, &llm_dir_clone);
+                });
+            }
+
             app.manage(AppState {
                 db: Arc::new(db),
+                app_data_dir,
                 log_dir,
-                documents_dir,
-                dictionaries_dir,
+                documents_dir: RwLock::new(documents_dir),
+                dictionaries_dir: RwLock::new(dictionaries_dir),
                 dictionary: DictionaryManager::new(),
                 cedict: CedictManager::new(),
                 llm_dir,
+                models_dir: RwLock::new(models_dir),
                 builtin_llm: BuiltinLlmManager::new(),
                 download_cancel: std::sync::atomic::AtomicBool::new(false),
                 log_lock: Mutex::new(()),
@@ -810,6 +929,8 @@ pub fn run() {
             open_devtools,
             get_app_data_dir,
             get_documents_dir,
+            get_app_config,
+            save_app_config,
             open_in_file_manager,
             import_document_copy,
             import_markdown_copy,
@@ -837,10 +958,14 @@ pub fn run() {
             builtin_llm_probe_system,
             builtin_llm_recommend,
             builtin_llm_auto_start,
+            builtin_llm_benchmark,
             epub_extract,
             import_samples,
             migrate_documents,
             reset_app_data,
+            ollama_proxy::ollama_test_connection,
+            ollama_proxy::ollama_list_models,
+            ollama_proxy::ollama_stream_chat,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {

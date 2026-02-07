@@ -11,8 +11,9 @@ import { WordPopup } from "@/components/ui/WordPopup";
 import { SettingsModal } from "@/components/settings/SettingsModal";
 import { HelpModal } from "@/components/help/HelpModal";
 import { DocumentLibrary } from "@/components/library/DocumentLibrary";
+import { SetupWizard } from "@/components/setup/SetupWizard";
 import { useDocumentStore } from "@/stores/documentStore";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, Channel } from "@tauri-apps/api/core";
 import { isSingleCJKWord, isSingleWord } from "@/services/dictionary";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useI18n } from "@/i18n";
@@ -32,19 +33,27 @@ function getDocType(filePath: string): DocType {
 
 function App() {
   const { t } = useI18n();
+  const [setupDone, setSetupDone] = useState(() => localStorage.getItem('aireader_setup_completed') === '1');
   const { 
     currentDocument, setCurrentDocument, setDocuments, documents, 
     setSelectedText,
     sidebarOpen, sidebarWidth, setSidebarWidth,
     aiPanelOpen, aiPanelWidth, setAIPanelWidth,
     openAIPanel, toggleSidebar, toggleAIPanel,
-    settingsOpen,
+    settingsOpen, settingsInitialTab,
     helpOpen,
     libraryOpen,
     closeSettings,
     closeHelp,
     closeLibrary
   } = useDocumentStore();
+
+  // Load saved settings from combined localStorage on mount (before auto-start)
+  const didLoadSettingsRef = useRef(false);
+  if (!didLoadSettingsRef.current) {
+    didLoadSettingsRef.current = true;
+    useSettingsStore.getState().loadSettings();
+  }
 
   const dictEnableEnToZh = useSettingsStore((s) => s.dictEnableEnToZh);
   const dictEnableZhToEn = useSettingsStore((s) => s.dictEnableZhToEn);
@@ -140,22 +149,38 @@ function App() {
     [documents, setCurrentDocument, setDocuments, t]
   );
 
-  // C7: Auto-detect hardware on startup (silent, failure-safe)
-  const didAutoDetectRef = useRef(false);
+  // C7: Auto-start AI on startup if previously configured (silent, failure-safe)
+  const [aiAutoStartFailed, setAiAutoStartFailed] = useState(false);
+  const didAutoStartRef = useRef(false);
   useEffect(() => {
-    if (didAutoDetectRef.current) return;
-    didAutoDetectRef.current = true;
+    if (!setupDone) return; // skip if setup wizard is active
+    if (didAutoStartRef.current) return;
+    didAutoStartRef.current = true;
     (async () => {
+      const s = useSettingsStore.getState();
+      if (!s.builtinAutoEnabled || s.llmProvider !== 'builtin_local') {
+        return;
+      }
       try {
-        const { builtinCudaVersion } = useSettingsStore.getState();
-        await invoke("builtin_llm_recommend", {
-          options: { preferredTier: 'auto', preferredCompute: 'auto', cudaVersion: builtinCudaVersion },
+        console.log('[App] Auto-starting AI with model:', s.builtinModelId);
+        await invoke("builtin_llm_ensure_running", {
+          options: {
+            modelId: s.builtinModelId,
+            mode: "bundled_only",
+            computeMode: s.builtinComputeMode,
+            gpuBackend: s.builtinGpuBackend,
+            gpuLayers: s.builtinGpuLayers,
+            cudaVersion: s.builtinCudaVersion,
+          },
+          onProgress: new Channel(),
         });
+        console.log('[App] AI auto-started successfully');
       } catch (e) {
-        console.warn('[App] Hardware auto-detect failed (non-blocking):', e);
+        console.warn('[App] AI auto-start failed (non-blocking):', e);
+        setAiAutoStartFailed(true);
       }
     })();
-  }, []);
+  }, [setupDone]);
 
   // T1: Auto-import sample documents on first launch
   const didImportSamplesRef = useRef(false);
@@ -504,6 +529,11 @@ function App() {
     [setSelectedText, openAIPanel, aiPanelOpen, extractLookupToken, dictEnableEnToZh, dictEnableZhToEn, currentDocument]
   );
 
+  // Show setup wizard on first launch
+  if (!setupDone) {
+    return <SetupWizard onComplete={() => setSetupDone(true)} />;
+  }
+
   return (
     <div className="h-screen flex bg-background text-foreground">
       {sidebarOpen && (
@@ -570,6 +600,7 @@ function App() {
                 onImportFolder={handleImportFolder}
                 isDark={isDark}
                 onToggleTheme={toggleTheme}
+                aiAutoStartFailed={aiAutoStartFailed}
               />
             )}
           </ErrorBoundary>
@@ -594,7 +625,7 @@ function App() {
         </>
       )}
 
-      <SettingsModal isOpen={settingsOpen} onClose={closeSettings} />
+      <SettingsModal isOpen={settingsOpen} onClose={closeSettings} initialTab={settingsInitialTab} />
       <HelpModal isOpen={helpOpen} onClose={closeHelp} />
       {libraryOpen && (
         <DocumentLibrary onImportFiles={handleOpenFile} onImportFolder={handleImportFolder} onClose={closeLibrary} />

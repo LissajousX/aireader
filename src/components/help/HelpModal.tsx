@@ -35,7 +35,7 @@ const GUIDE_ZH = `# AiReader 用户指南
 | 💬 上下文对话 | 围绕文档内容自由对话 |
 | 📒 智能笔记 | AI 生成候选笔记，人工确认后持久化存储 |
 | 🧠 深度思考 | Qwen3 真正的思考模式 |
-| 📕 离线词典 | 内置 ECDICT 英汉词典，双击查词 |
+| � 离线词典 | 内置 ECDICT + CC-CEDICT 词典，中英互译，双击查词 |
 | � 多种后端 | 也支持 Ollama、OpenAI 兼容 API |
 
 ---
@@ -154,8 +154,8 @@ PDF 和 EPUB 文档支持目录侧栏。
 
 **双击**文档中的单词会弹出词典窗口。
 
-- **英汉词典**: 查询英语单词的中文释义
-- **汉英词典**: 查询中文词汇的英文释义
+- **ECDICT**: 英语单词 → 中文释义（音标、词性、解释）
+- **CC-CEDICT**: 中文词汇 → 英文释义（拼音、词性、解释）
 - 可在设置中独立开关每个方向
 
 ---
@@ -167,7 +167,7 @@ PDF 和 EPUB 文档支持目录侧栏。
 | 设置项 | 说明 |
 |---|---|
 | 界面语言 | 中文 / English |
-| 离线词典 | 英汉、汉英独立开关 |
+| 离线词典 | ECDICT（英→中）、CC-CEDICT（中→英）独立开关 |
 | 文档库位置 | 自定义导入副本的存储路径 |
 
 ### AI
@@ -180,7 +180,20 @@ PDF 和 EPUB 文档支持目录侧栏。
 
 **模型切换**: 在 AI 面板顶部的模型下拉列表中统一管理所有来源的模型，选择即切换。
 
-**内置 AI 智能分级**: 系统根据硬件（内存/显卡）自动选择 T0(0.6B)~T3(8B) 档位模型。
+**智能分级策略**: 系统采用三层自适应策略自动匹配最流畅的模型：
+
+1. **硬件探测** — 检测 GPU 类型与显存，选择计算模式（CUDA / Vulkan / CPU）
+2. **资源初筛** — 根据 CPU 核心数、内存、显存预估模型级别
+3. **基准测试** — 用 llama-bench 实测推理速度 (tok/s)，精确定级
+
+| 基准测试 | 推荐 |
+|---|---|
+| ≥100 tok/s | T3 (8B) |
+| 50–99 | T2 (4B) |
+| 20–49 | T1 (1.7B) |
+| <20 | T0 (0.6B) |
+
+集成显卡（Intel UHD/HD/Iris，显存<2GB）自动回退 CPU 模式。觉得慢？简易模式下有「降级到更小模型」按钮。
 
 ### 存储
 
@@ -215,6 +228,16 @@ PDF 和 EPUB 文档支持目录侧栏。
 - AMD/Intel 等通过 Vulkan
 - CPU 模式所有电脑可用
 
+**Q: 集成显卡为什么不用 GPU 加速？**
+集成显卡显存通常 < 2GB，实测比纯 CPU 更慢，系统会自动回退 CPU 模式。
+
+**Q: 模型太慢怎么办？**
+简易模式下点「降级到更小模型」，或在高级模式手动选择更小模型。
+
+**Q: 如何卸载 / 更新？**
+- 卸载：Windows 设置 → 应用 → 搜索 "Aireader" → 卸载。用户数据在 %APPDATA%/com.aireader.app/，需手动删除
+- 更新：下载新版安装包直接运行，自动覆盖，数据保留
+
 ---
 
 *AiReader — Read. Select. Translate. Save.*
@@ -243,7 +266,7 @@ const GUIDE_EN = `# AiReader User Guide
 | 💬 Contextual Chat | Free-form chat about document content |
 | 📒 Smart Notes | AI-generated draft notes, human-confirmed persistent storage |
 | 🧠 Deep Thinking | True thinking mode with Qwen3 |
-| 📕 Offline Dictionary | Built-in ECDICT, double-click to look up words |
+| � Offline Dictionary | Built-in ECDICT + CC-CEDICT, bidirectional Chinese-English, double-click to look up |
 | � Multiple Backends | Also supports Ollama, OpenAI-compatible APIs |
 
 ---
@@ -362,8 +385,8 @@ Built-in Qwen3 models support **truly disabling** thinking for faster, lighter r
 
 **Double-click** a word in the document to show a dictionary popup.
 
-- **EN→ZH**: Look up English word definitions in Chinese
-- **ZH→EN**: Look up Chinese word definitions in English
+- **ECDICT (EN→ZH)**: Look up English words with Chinese definitions (phonetic, POS, explanation)
+- **CC-CEDICT (ZH→EN)**: Look up Chinese words with English definitions (pinyin, POS, explanation)
 - Toggle each direction in Settings
 
 ---
@@ -375,7 +398,7 @@ Built-in Qwen3 models support **truly disabling** thinking for faster, lighter r
 | Setting | Description |
 |---|---|
 | UI Language | Chinese / English |
-| Dictionary | Toggle EN→ZH and ZH→EN independently |
+| Dictionary | Toggle ECDICT (EN→ZH) and CC-CEDICT (ZH→EN) independently |
 | Library Folder | Custom path for imported copies |
 
 ### AI
@@ -388,7 +411,20 @@ Built-in Qwen3 models support **truly disabling** thinking for faster, lighter r
 
 **Model Switching**: Use the unified model dropdown in the AI panel header to manage and switch between all providers' models.
 
-**Smart Tiering**: System auto-selects T0(0.6B)~T3(8B) model based on hardware (RAM/GPU).
+**Smart Tier Strategy**: The system uses a 3-layer adaptive strategy:
+
+1. **Hardware Detection** — Detect GPU type & VRAM, select compute mode (CUDA / Vulkan / CPU)
+2. **Resource Pre-filter** — Quick estimate based on CPU cores, RAM, VRAM
+3. **Benchmark** — Run llama-bench to measure actual tok/s, precisely select the smoothest model
+
+| Benchmark | Recommendation |
+|---|---|
+| ≥100 tok/s | T3 (8B) |
+| 50–99 | T2 (4B) |
+| 20–49 | T1 (1.7B) |
+| <20 | T0 (0.6B) |
+
+Integrated GPUs (Intel UHD/HD/Iris, VRAM<2GB) auto fall back to CPU mode. Too slow? Use the "Downgrade" button in Simple Mode.
 
 ### Storage
 
@@ -422,6 +458,16 @@ Click **Link** in advanced mode → download with another tool → click **Impor
 - NVIDIA (CUDA 12.4 / 13.1)
 - AMD/Intel via Vulkan
 - CPU mode works on all computers
+
+**Q: Why doesn't my integrated GPU use GPU acceleration?**
+Integrated GPUs typically have < 2GB VRAM. GPU acceleration is actually slower than CPU mode. The system auto-detects and falls back.
+
+**Q: Model is too slow?**
+Use the "Downgrade to a smaller model" button in Simple Mode, or manually select a smaller model in Advanced Mode.
+
+**Q: How to uninstall / update?**
+- Uninstall: Windows Settings → Apps → search "Aireader" → Uninstall. User data in %APPDATA%/com.aireader.app/ must be deleted manually
+- Update: Download new installer and run. Automatic overwrite, data preserved
 
 ---
 

@@ -193,7 +193,7 @@ fn epub_extract_sync(documents_dir: PathBuf, path: String) -> Result<String, Str
 /// 异步EPUB解压命令 - 在后台线程执行，不阻塞主线程
 #[tauri::command]
 pub async fn epub_extract(state: State<'_, AppState>, path: String) -> Result<String, String> {
-    let documents_dir = state.documents_dir.clone();
+    let documents_dir = state.documents_dir.read().unwrap().clone();
     
     // 在后台线程执行IO密集型操作
     tokio::task::spawn_blocking(move || {

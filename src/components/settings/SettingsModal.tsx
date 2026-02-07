@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Save, ChevronDown, ChevronUp, RotateCcw, RefreshCw, CheckCircle, XCircle, Loader2, Trash2, Download, Copy, Upload, Settings, Globe, Sparkles, HardDrive, FolderOpen, Zap, Languages } from "lucide-react";
+import { X, ChevronDown, ChevronUp, RotateCcw, RefreshCw, CheckCircle, XCircle, Loader2, Trash2, Download, Copy, Upload, Settings, Globe, Sparkles, HardDrive, FolderOpen, Zap, Languages, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useSettingsStore, DEFAULT_PROMPTS, type PromptSettings } from "@/stores/settingsStore";
 import { fetchOllamaModels, testOllamaConnection, formatModelSize, type OllamaModel } from "@/services/ollamaApi";
@@ -13,6 +13,7 @@ import { getErrorMessage } from "@/lib/utils";
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: 'general' | 'ai' | 'storage';
 }
 
 const PROMPT_LABELS_ZH: Record<keyof PromptSettings, string> = {
@@ -39,7 +40,7 @@ const PROMPT_LABELS_EN: Record<keyof PromptSettings, string> = {
   chatContext: "Chat Context Prompt",
 };
 
-export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
   const { 
     uiLanguage,
     dictEnableEnToZh,
@@ -74,10 +75,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showDownloadUrls, setShowDownloadUrls] = useState(false);
-  const [localPrompts, setLocalPrompts] = useState<PromptSettings>({ ...DEFAULT_PROMPTS });
   const [initialized, setInitialized] = useState(false);
   const [cacheStats, setCacheStats] = useState({ count: 0, size: 0, maxSize: 200 * 1024 * 1024 });
-  const [settingsTab, setSettingsTab] = useState<'general' | 'ai' | 'storage'>('general');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'ai' | 'storage'>(initialTab || 'general');
   
   // Ollama 模型相关状态
   const [models, setModels] = useState<OllamaModel[]>([]);
@@ -87,6 +87,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   type BuiltinStatus = { runtimeInstalled: boolean; modelInstalled: boolean; modelId?: string; running: boolean; baseUrl?: string | null; runningModelId?: string | null; runningThisModel?: boolean };
   type BuiltinProbe = { cpuCores: number; cpuBrand?: string; totalMemoryBytes: number; vramBytes?: number | null; gpuName?: string | null; hasCuda: boolean; hasVulkan: boolean };
   type BuiltinRecommendResult = { recommendedModelId: string; recommendedComputeMode: string; recommendedGpuBackend: string; recommendedCudaVersion: string; probe: BuiltinProbe };
+  type BenchmarkResult = { tokensPerSecond: number; completionTokens: number; elapsedMs: number; recommendedTier: number; recommendedModelId: string };
   type RuntimeStatus = { installed: boolean; runtimeDir: string; computeMode: string; gpuBackend: string; cudaVersion: string };
   const [builtinStatusById, setBuiltinStatusById] = useState<Record<string, BuiltinStatus | null>>({});
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
@@ -97,13 +98,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [lastFailedModelId, setLastFailedModelId] = useState<string | null>(null);
   const [appDataDir, setAppDataDir] = useState<string | null>(null);
   const [defaultDocumentsDir, setDefaultDocumentsDir] = useState<string | null>(null);
+  const [modelsDir, setModelsDir] = useState<string | null>(null);
   const [builtinModels, setBuiltinModels] = useState<Array<{ modelId: string; fileName: string; size: number }>>([]);
   const [builtinRecommendLoading, setBuiltinRecommendLoading] = useState(false);
   const [builtinRecommend, setBuiltinRecommend] = useState<BuiltinRecommendResult | null>(null);
   const [builtinAdvancedMode, setBuiltinAdvancedMode] = useState(false);
   const [quickSetupStep, setQuickSetupStep] = useState<string | null>(null);
+  const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<{ written: number; total: number | null; label: string; speed?: number | null } | null>(null);
-  const [startedConfig, setStartedConfig] = useState<{ modelId: string; cm: string; gb: string; cv: string } | null>(null);
+  const [startedConfig, setStartedConfig] = useState<{ modelId: string; cm: string; gb: string; cv: string; gl: number } | null>(null);
 
 
   const RUNTIME_DOWNLOADS: Array<{ key: string; label: string; defaultUrl: string }> = [
@@ -371,12 +374,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     if (isOpen && !initialized) {
       loadSettings();
       setInitialized(true);
+      if (initialTab) setSettingsTab(initialTab);
     }
     if (!isOpen) {
       setInitialized(false);
       setConnectionStatus('unknown');
     }
-  }, [isOpen, loadSettings, initialized]);
+  }, [isOpen, loadSettings, initialized, initialTab]);
 
   useEffect(() => {
     refreshBuiltinStatus();
@@ -386,6 +390,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     try {
       setBuiltinError(null);
       setBuiltinRecommendLoading(true);
+      setBenchmarkResult(null);
       const r = await invoke<BuiltinRecommendResult>("builtin_llm_recommend", {
         options: {
           preferredTier: 'auto',
@@ -394,6 +399,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         },
       });
       setBuiltinRecommend(r);
+
+      // Try running llama-bench if runtime + 0.6B model are installed
+      try {
+        const bench = await invoke<BenchmarkResult>("builtin_llm_benchmark", {
+          options: {
+            computeMode: r.recommendedComputeMode,
+            gpuBackend: r.recommendedGpuBackend,
+            cudaVersion: r.recommendedCudaVersion,
+            gpuLayers: builtinGpuLayers,
+          },
+        });
+        setBenchmarkResult(bench);
+      } catch (benchErr) {
+        console.warn("Benchmark skipped (runtime/model not installed):", benchErr);
+      }
     } catch (error) {
       console.error("builtin_llm_recommend failed:", error);
       const msg = getErrorMessage(error);
@@ -418,7 +438,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     if (anyRunning) {
       try { await invoke<any>("builtin_llm_stop", {}); } catch { /* ignore */ }
     }
-    setBuiltinModelId(builtinRecommend.recommendedModelId);
+    // Prefer benchmark-based model if available, otherwise use hardware-only recommendation
+    const modelId = benchmarkResult ? benchmarkResult.recommendedModelId : builtinRecommend.recommendedModelId;
+    setBuiltinModelId(modelId);
     setBuiltinComputeMode(builtinRecommend.recommendedComputeMode as any);
     setBuiltinGpuBackend(builtinRecommend.recommendedGpuBackend as any);
     setBuiltinCudaVersion(builtinRecommend.recommendedCudaVersion as any);
@@ -430,8 +452,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     try {
       setBuiltinError(null);
       setBuiltinGlobalLoading(true);
+      setBenchmarkResult(null);
 
-      // Step 1: Detect hardware
+      // Step 1: Detect hardware → determine compute mode
       setQuickSetupStep(b('正在探测硬件...', 'Detecting hardware...'));
       const r = await invoke<BuiltinRecommendResult>("builtin_llm_recommend", {
         options: {
@@ -442,35 +465,66 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       });
       setBuiltinRecommend(r);
 
-      // Step 2: Apply recommendation
-      setQuickSetupStep(b('正在应用推荐配置...', 'Applying recommendation...'));
-      setBuiltinModelId(r.recommendedModelId);
+      // Apply compute mode settings (model will be determined by benchmark)
       setBuiltinComputeMode(r.recommendedComputeMode as any);
       setBuiltinGpuBackend(r.recommendedGpuBackend as any);
       setBuiltinCudaVersion(r.recommendedCudaVersion as any);
-      saveSettings();
 
-      // Step 3: Install runtime + model
-      setQuickSetupStep(b('正在下载模型（首次可能较慢）...', 'Downloading model (may take a while)...'));
+      const benchModelId = 'qwen3_0_6b_q4_k_m';
+
+      // Step 2: Install runtime + 0.6B benchmark model
+      setQuickSetupStep(b('正在安装基准测试模型...', 'Installing benchmark model...'));
       await invoke<any>("builtin_llm_install", {
         options: {
-          modelId: r.recommendedModelId,
+          modelId: benchModelId,
           mode: "auto",
           computeMode: r.recommendedComputeMode,
           gpuBackend: r.recommendedGpuBackend,
           cudaVersion: r.recommendedCudaVersion,
-          modelUrl: builtinDownloadUrls[r.recommendedModelId] || undefined,
+          modelUrl: builtinDownloadUrls[benchModelId] || undefined,
           runtimeUrl: builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).rtKey] || undefined,
           cudartUrl: builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).cudartKey ?? ''] || undefined,
         },
         onProgress: createProgressChannel(),
       });
 
-      // Step 4: Start service
+      // Step 3: Run llama-bench directly (no server needed)
+      setQuickSetupStep(b('正在测试推理性能 (llama-bench)...', 'Benchmarking inference speed (llama-bench)...'));
+      const bench = await invoke<BenchmarkResult>("builtin_llm_benchmark", {
+        options: {
+          computeMode: r.recommendedComputeMode,
+          gpuBackend: r.recommendedGpuBackend,
+          cudaVersion: r.recommendedCudaVersion,
+          gpuLayers: builtinGpuLayers,
+        },
+      });
+      setBenchmarkResult(bench);
+
+      const finalModelId = bench.recommendedModelId;
+
+      // Step 4: If benchmark recommends a larger model, install it
+      if (finalModelId !== benchModelId) {
+        setQuickSetupStep(b(`性能测试完成 (${bench.tokensPerSecond.toFixed(1)} tok/s)，正在安装推荐模型...`, `Benchmark done (${bench.tokensPerSecond.toFixed(1)} tok/s), installing recommended model...`));
+        await invoke<any>("builtin_llm_install", {
+          options: {
+            modelId: finalModelId,
+            mode: "auto",
+            computeMode: r.recommendedComputeMode,
+            gpuBackend: r.recommendedGpuBackend,
+            cudaVersion: r.recommendedCudaVersion,
+            modelUrl: builtinDownloadUrls[finalModelId] || undefined,
+            runtimeUrl: builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).rtKey] || undefined,
+            cudartUrl: builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).cudartKey ?? ''] || undefined,
+          },
+          onProgress: createProgressChannel(),
+        });
+      }
+
+      // Step 5: Start service with final model
       setQuickSetupStep(b('正在启动 AI 服务...', 'Starting AI service...'));
       await invoke<any>("builtin_llm_ensure_running", {
         options: {
-          modelId: r.recommendedModelId,
+          modelId: finalModelId,
           mode: "auto",
           computeMode: r.recommendedComputeMode,
           gpuBackend: r.recommendedGpuBackend,
@@ -482,6 +536,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         onProgress: createProgressChannel(),
       });
 
+      // Apply final model selection & mark AI as configured for auto-start
+      setBuiltinModelId(finalModelId);
+      useSettingsStore.getState().setBuiltinAutoEnabled(true);
+      saveSettings();
       await refreshBuiltinStatus();
       setQuickSetupStep(null);
     } catch (error) {
@@ -490,6 +548,59 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       if (!/cancelled/i.test(msg)) setBuiltinError(msg);
       setQuickSetupStep(null);
     } finally {
+      setBuiltinGlobalLoading(false);
+    }
+  };
+
+  const handleModelDowngrade = async () => {
+    const TIER_ORDER = ['qwen3_8b_q5_k_m', 'qwen3_8b_q4_k_m', 'qwen3_4b_q5_k_m', 'qwen3_4b_q4_k_m', 'qwen3_1_7b_q4_k_m', 'qwen3_0_6b_q4_k_m'];
+    const currentIdx = TIER_ORDER.indexOf(builtinModelId);
+    const nextIdx = currentIdx >= 0 ? currentIdx + 1 : TIER_ORDER.length - 1;
+    if (nextIdx >= TIER_ORDER.length) return; // already smallest
+    const nextModelId = TIER_ORDER[nextIdx];
+    try {
+      setBuiltinError(null);
+      setBuiltinGlobalLoading(true);
+      setQuickSetupStep(b('正在降级模型...', 'Downgrading model...'));
+      // Stop current
+      try { await invoke<any>("builtin_llm_stop"); } catch { /* ignore */ }
+      // Install smaller model
+      await invoke<any>("builtin_llm_install", {
+        options: {
+          modelId: nextModelId,
+          mode: "auto",
+          computeMode: builtinComputeMode,
+          gpuBackend: builtinGpuBackend,
+          cudaVersion: builtinCudaVersion,
+          modelUrl: builtinDownloadUrls[nextModelId] || undefined,
+          runtimeUrl: builtinDownloadUrls[getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion).rtKey] || undefined,
+          cudartUrl: builtinDownloadUrls[getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion).cudartKey ?? ''] || undefined,
+        },
+        onProgress: createProgressChannel(),
+      });
+      // Start smaller model
+      setQuickSetupStep(b('正在启动 AI 服务...', 'Starting AI service...'));
+      await invoke<any>("builtin_llm_ensure_running", {
+        options: {
+          modelId: nextModelId,
+          mode: "auto",
+          computeMode: builtinComputeMode,
+          gpuBackend: builtinGpuBackend,
+          gpuLayers: builtinGpuLayers,
+          cudaVersion: builtinCudaVersion,
+          runtimeUrl: builtinDownloadUrls[getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion).rtKey] || undefined,
+          cudartUrl: builtinDownloadUrls[getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion).cudartKey ?? ''] || undefined,
+        },
+        onProgress: createProgressChannel(),
+      });
+      setBuiltinModelId(nextModelId);
+      saveSettings();
+      await refreshBuiltinStatus();
+    } catch (error) {
+      const msg = getErrorMessage(error);
+      if (!/cancelled/i.test(msg)) setBuiltinError(msg);
+    } finally {
+      setQuickSetupStep(null);
       setBuiltinGlobalLoading(false);
     }
   };
@@ -509,6 +620,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         setDefaultDocumentsDir(dir);
       } catch {
         setDefaultDocumentsDir(null);
+      }
+
+      try {
+        const cfg = await invoke<{ modelsDir: string }>('get_app_config');
+        setModelsDir(cfg.modelsDir);
+      } catch {
+        setModelsDir(null);
       }
     })();
   }, [isOpen]);
@@ -593,6 +711,57 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     // Update documents dir setting
     setDocumentsDir(dir);
     saveSettings();
+  };
+
+  const handleChooseModelsDir = async () => {
+    const { open, ask, message } = await import("@tauri-apps/plugin-dialog");
+    const selected = await open({ directory: true, multiple: false } as any);
+    const dir = typeof selected === "string" ? selected : null;
+    if (!dir) return;
+
+    const oldDir = modelsDir;
+    if (oldDir && dir.replace(/[\\/]+$/, '') === oldDir.replace(/[\\/]+$/, '')) return;
+
+    let migrateModels = false;
+    if (oldDir) {
+      migrateModels = await ask(
+        b(
+          '是否将旧目录中的模型文件迁移到新位置？\n（原文件将被移动）',
+          'Migrate model files to the new location?\n(Original files will be moved)'
+        ),
+        {
+          title: b('迁移模型', 'Migrate Models'),
+          kind: 'info',
+          okLabel: b('迁移', 'Migrate'),
+          cancelLabel: b('跳过', 'Skip'),
+        }
+      );
+    }
+
+    try {
+      await invoke("save_app_config", { config: { modelsDir: dir, migrateModels } });
+      setModelsDir(dir);
+      await message(
+        b(
+          '模型目录已更新。' + (builtinStatus?.running ? '\n服务已自动停止，请在 AI 面板中重新启动。' : ''),
+          'Model directory updated.' + (builtinStatus?.running ? '\nService was stopped. Please restart from AI panel.' : '')
+        ),
+        { title: b('模型目录', 'Model Directory'), kind: 'info' }
+      );
+      await refreshBuiltinStatus();
+    } catch (e) {
+      await message(
+        b('修改模型目录失败：', 'Failed to change model directory: ') + String(e),
+        { title: b('错误', 'Error'), kind: 'error' }
+      );
+    }
+  };
+
+  const handleOpenModelsDir = async () => {
+    if (!modelsDir) return;
+    try {
+      await invoke("open_in_file_manager", { path: modelsDir });
+    } catch {}
   };
 
   const handleOpenDocumentsDir = async () => {
@@ -737,7 +906,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setBuiltinGlobalLoading(true);
       const { rtKey: erKey, cudartKey: ecKey } = getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion);
       await invoke<any>("builtin_llm_ensure_running", { options: { modelId: builtinModelId, mode: "auto", computeMode: builtinComputeMode, gpuBackend: builtinGpuBackend, gpuLayers: builtinGpuLayers, cudaVersion: builtinCudaVersion, runtimeUrl: builtinDownloadUrls[erKey] || undefined, cudartUrl: builtinDownloadUrls[ecKey ?? ''] || undefined }, onProgress: createProgressChannel() });
-      setStartedConfig({ modelId: builtinModelId, cm: builtinComputeMode, gb: builtinGpuBackend, cv: builtinCudaVersion });
+      setStartedConfig({ modelId: builtinModelId, cm: builtinComputeMode, gb: builtinGpuBackend, cv: builtinCudaVersion, gl: builtinGpuLayers });
+      // Enable auto-start on next launch
+      useSettingsStore.getState().setBuiltinAutoEnabled(true);
+      saveSettings();
       await refreshBuiltinStatus();
     } catch (error) {
       console.error("builtin_llm_ensure_running failed:", error);
@@ -765,12 +937,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   };
 
 
-  // prompts 更新后同步到 localPrompts
-  useEffect(() => {
-    if (isOpen && initialized) {
-      setLocalPrompts({ ...prompts });
-    }
-  }, [isOpen, initialized, prompts]);
 
   // 获取模型列表
   const handleRefreshModels = async () => {
@@ -797,19 +963,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   }, [isOpen, initialized, ollamaUrl]);
 
-  const handleSave = () => {
-    Object.entries(localPrompts).forEach(([key, value]) => {
-      setPrompt(key as keyof PromptSettings, value);
-    });
-    setUiLanguage(uiLanguage);
-    setDictEnableEnToZh(dictEnableEnToZh);
-    setDictEnableZhToEn(dictEnableZhToEn);
-    saveSettings();
-    onClose();
-  };
-
   const handleResetPrompt = (key: keyof PromptSettings) => {
-    setLocalPrompts(prev => ({ ...prev, [key]: DEFAULT_PROMPTS[key] }));
+    setPrompt(key, DEFAULT_PROMPTS[key]);
+    saveSettings();
   };
 
   const handleResetAllPrompts = async () => {
@@ -821,7 +977,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       cancelLabel: b("取消", "Cancel"),
     });
     if (!ok) return;
-    setLocalPrompts({ ...DEFAULT_PROMPTS });
+    Object.keys(DEFAULT_PROMPTS).forEach(k => setPrompt(k as keyof PromptSettings, DEFAULT_PROMPTS[k as keyof PromptSettings]));
+    saveSettings();
   };
 
   if (!isOpen) return null;
@@ -898,14 +1055,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <div className="flex rounded-lg border border-border p-0.5 bg-muted/30 w-fit">
                   <button
                     type="button"
-                    onClick={() => setUiLanguage('zh')}
+                    onClick={() => { setUiLanguage('zh'); saveSettings(); }}
                     className={`px-5 py-1.5 text-sm rounded-md transition-all ${uiLanguage === 'zh' ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}
                   >
                     中文
                   </button>
                   <button
                     type="button"
-                    onClick={() => setUiLanguage('en')}
+                    onClick={() => { setUiLanguage('en'); saveSettings(); }}
                     className={`px-5 py-1.5 text-sm rounded-md transition-all ${uiLanguage === 'en' ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}
                   >
                     English
@@ -930,7 +1087,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <div className="text-xs text-muted-foreground mt-0.5">{b('双击英文单词弹出词典', 'Double-click English word for dictionary')}</div>
                       </div>
                     </div>
-                    <ToggleSwitch checked={dictEnableEnToZh} onChange={setDictEnableEnToZh} />
+                    <ToggleSwitch checked={dictEnableEnToZh} onChange={(v) => { setDictEnableEnToZh(v); saveSettings(); }} />
                   </div>
                   <div className="flex items-center justify-between px-4 py-3.5 hover:bg-muted/20 transition-colors">
                     <div className="flex items-center gap-3">
@@ -940,7 +1097,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         <div className="text-xs text-muted-foreground mt-0.5">{b('双击中文词语弹出词典', 'Double-click Chinese word for dictionary')}</div>
                       </div>
                     </div>
-                    <ToggleSwitch checked={dictEnableZhToEn} onChange={setDictEnableZhToEn} />
+                    <ToggleSwitch checked={dictEnableZhToEn} onChange={(v) => { setDictEnableZhToEn(v); saveSettings(); }} />
                   </div>
                 </div>
               </div>
@@ -967,6 +1124,30 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     {b('选择文件夹', 'Choose Folder')}
                   </Button>
                   <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleOpenDocumentsDir}>
+                    {b('打开文件夹', 'Open Folder')}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Model Storage Directory */}
+              <div className="rounded-xl border border-border/60 p-4 space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-500" />
+                  </div>
+                  <label className="text-sm font-medium">{b('模型存储目录', 'Model Storage')}</label>
+                </div>
+                <div className="rounded-lg bg-muted/30 px-3 py-2">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="font-mono break-all">{modelsDir || b('默认位置', 'Default')}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">{b('AI 模型文件（GGUF）存放位置，修改后服务将自动停止', 'AI model files (GGUF) location. Service stops on change.')}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleChooseModelsDir}>
+                    {b('选择文件夹', 'Choose Folder')}
+                  </Button>
+                  <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleOpenModelsDir}>
                     {b('打开文件夹', 'Open Folder')}
                   </Button>
                 </div>
@@ -1007,16 +1188,36 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        {builtinStatus?.running && builtinStatus?.runningThisModel ? (
-                          <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleBuiltinStop} disabled={builtinGlobalLoading}>
-                            {b('停止', 'Stop')}
-                          </Button>
-                        ) : builtinStatus?.modelInstalled ? (
-                          <Button size="sm" className="rounded-lg text-xs h-7" onClick={handleBuiltinRun} disabled={builtinGlobalLoading || !builtinStatus?.runtimeInstalled}>
-                            {builtinGlobalLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                            {b('启动', 'Start')}
-                          </Button>
-                        ) : null}
+                        {(() => {
+                          const isRunning = builtinStatus?.running;
+                          const statusConfigChanged = isRunning && (
+                            !builtinStatus?.runningThisModel ||
+                            (startedConfig && (startedConfig.cm !== builtinComputeMode || startedConfig.gb !== builtinGpuBackend || startedConfig.cv !== builtinCudaVersion || startedConfig.gl !== builtinGpuLayers))
+                          );
+                          if (statusConfigChanged) return (
+                            <>
+                              <Button size="sm" className="rounded-lg text-xs h-7 bg-amber-600 hover:bg-amber-700" onClick={handleBuiltinRun} disabled={builtinGlobalLoading}>
+                                {builtinGlobalLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+                                {b('应用并重启', 'Apply & Restart')}
+                              </Button>
+                              <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleBuiltinStop} disabled={builtinGlobalLoading}>
+                                {b('停止', 'Stop')}
+                              </Button>
+                            </>
+                          );
+                          if (isRunning && builtinStatus?.runningThisModel) return (
+                            <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleBuiltinStop} disabled={builtinGlobalLoading}>
+                              {b('停止', 'Stop')}
+                            </Button>
+                          );
+                          if (builtinStatus?.modelInstalled) return (
+                            <Button size="sm" className="rounded-lg text-xs h-7" onClick={handleBuiltinRun} disabled={builtinGlobalLoading || !builtinStatus?.runtimeInstalled}>
+                              {builtinGlobalLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                              {b('启动', 'Start')}
+                            </Button>
+                          );
+                          return null;
+                        })()}
                       </div>
                     </div>
 
@@ -1121,33 +1322,44 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             <div>
                               {b('加速支持', 'Acceleration')}: {[builtinRecommend.probe.hasCuda ? 'CUDA ✓' : null, builtinRecommend.probe.hasVulkan ? 'Vulkan ✓' : null].filter(Boolean).join(' · ') || b('无', 'None')}
                             </div>
+                            {benchmarkResult && (
+                              <div className="pt-0.5 border-t border-border/30 mt-1">
+                                {b('基准测试', 'Benchmark')}: {benchmarkResult.tokensPerSecond.toFixed(1)} tok/s ({benchmarkResult.completionTokens} tokens / {(benchmarkResult.elapsedMs / 1000).toFixed(1)}s)
+                              </div>
+                            )}
                             <div className="pt-0.5 border-t border-border/30 mt-1">
-                              {b('选择配置', 'Config')}: {builtinRecommend.recommendedModelId} · {builtinRecommend.recommendedComputeMode}/{builtinRecommend.recommendedGpuBackend}
+                              {b('选择配置', 'Config')}: {builtinModelId} · {builtinRecommend.recommendedComputeMode}/{builtinRecommend.recommendedGpuBackend}
                             </div>
                           </div>
                         )}
+                        {/* Downgrade button: show when model is running and not already the smallest */}
+                        {builtinStatus?.running && !builtinGlobalLoading && builtinModelId !== 'qwen3_0_6b_q4_k_m' && (
+                          <button
+                            type="button"
+                            onClick={handleModelDowngrade}
+                            className="w-full flex items-center justify-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 border border-amber-300/60 dark:border-amber-600/40 rounded-lg py-2 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                            {b('觉得太慢？降级到更小模型', 'Too slow? Downgrade to a smaller model')}
+                          </button>
+                        )}
                       </div>
 
-                      {/* Tier explanation */}
-                      <div className="rounded-xl border border-border/60 p-4 space-y-2">
+                      {/* Tier explanation — compact */}
+                      <div className="rounded-xl border border-border/60 p-3 space-y-1.5">
                         <div className="text-xs font-medium flex items-center gap-1.5">
                           <Sparkles className="w-3.5 h-3.5 text-primary" />
-                          {b('智能分级策略', 'Smart Tier Strategy')}
+                          {b('智能分级', 'Smart Tier')}
                         </div>
                         <div className="text-[11px] text-muted-foreground leading-relaxed">
-                          {b(
-                            '系统根据您的硬件自动选择最佳模型。内存越大、有独立显卡的设备会分配更强的模型，以获得更高质量的翻译和对话效果。',
-                            'The system auto-selects the best model for your hardware. More RAM and a dedicated GPU means a stronger model for better translation and chat quality.'
-                          )}
+                          {b('探测硬件 → 基准测试 0.6B 模型实际速度 → 选择最流畅的模型级别。',
+                             'Detect hardware → benchmark 0.6B model speed → select the smoothest tier.')}
                         </div>
-                        <div className="grid grid-cols-2 gap-1.5 pt-1">
-                          {BUILTIN_MODELS.map((m) => (
-                            <div key={m.id} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                              <span className="w-5 h-4 rounded bg-primary/10 text-primary font-bold flex items-center justify-center flex-shrink-0">T{m.tier}</span>
-                              <span className="truncate">{m.title} <span className="text-muted-foreground/50">{m.subtitle.split('·')[0].trim()}</span></span>
-                              <span className="text-muted-foreground/60 ml-auto flex-shrink-0">{m.ramHint}</span>
-                            </div>
-                          ))}
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground/70">
+                          <span>≥100 tok/s → 8B</span>
+                          <span>50–99 → 4B</span>
+                          <span>20–49 → 1.7B</span>
+                          <span>&lt;20 → 0.6B</span>
                         </div>
                       </div>
 
@@ -1199,7 +1411,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           </div>
                           {builtinRecommend && (
                             <div className="text-[11px] text-muted-foreground bg-muted/40 rounded-lg p-2 mt-2 space-y-0.5">
-                              <div>{b('推荐', 'Rec')}: {builtinRecommend.recommendedModelId} · {builtinRecommend.recommendedComputeMode}/{builtinRecommend.recommendedGpuBackend}</div>
                               <div>
                                 {builtinRecommend.probe.cpuBrand || `CPU ${builtinRecommend.probe.cpuCores} ${b('核', 'cores')}`}
                                 {builtinRecommend.probe.cpuBrand ? ` (${builtinRecommend.probe.cpuCores}${b('核', 'C')})` : ''}
@@ -1207,6 +1418,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 {builtinRecommend.probe.gpuName ? ` · ${builtinRecommend.probe.gpuName}` : ''}
                                 {typeof builtinRecommend.probe.vramBytes === 'number' ? ` ${(builtinRecommend.probe.vramBytes / 1024 / 1024 / 1024).toFixed(1)} GB` : ''}
                               </div>
+                              {benchmarkResult ? (
+                                <div className="pt-0.5 border-t border-border/30 mt-0.5">
+                                  {b('基准测试', 'Benchmark')}: {benchmarkResult.tokensPerSecond.toFixed(1)} tok/s · {b('推荐', 'Rec')}: {benchmarkResult.recommendedModelId} · {builtinRecommend.recommendedComputeMode}/{builtinRecommend.recommendedGpuBackend}
+                                </div>
+                              ) : (
+                                <div className="pt-0.5 border-t border-border/30 mt-0.5">
+                                  {b('推荐', 'Rec')}: {builtinRecommend.recommendedModelId} · {builtinRecommend.recommendedComputeMode}/{builtinRecommend.recommendedGpuBackend}
+                                  <span className="text-muted-foreground/50"> ({b('未benchmark，需先安装运行时和0.6B模型', 'No benchmark — install runtime & 0.6B first')})</span>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1481,7 +1702,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           const isRunning = builtinStatus?.running;
                           const configChanged = isRunning && (
                             !builtinStatus?.runningThisModel ||
-                            (startedConfig && (startedConfig.cm !== builtinComputeMode || startedConfig.gb !== builtinGpuBackend || startedConfig.cv !== builtinCudaVersion))
+                            (startedConfig && (startedConfig.cm !== builtinComputeMode || startedConfig.gb !== builtinGpuBackend || startedConfig.cv !== builtinCudaVersion || startedConfig.gl !== builtinGpuLayers))
                           );
                           return (
                         <div className="rounded-lg border border-border/50 p-3 space-y-3">
@@ -1648,8 +1869,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           </Button>
                         </div>
                         <textarea
-                          value={localPrompts[key]}
-                          onChange={(e) => setLocalPrompts(prev => ({ ...prev, [key]: e.target.value }))}
+                          value={prompts[key]}
+                          onChange={(e) => { setPrompt(key, e.target.value); saveSettings(); }}
                           className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground text-xs min-h-[60px] resize-y"
                           rows={2}
                         />
@@ -1794,13 +2015,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-border/60 bg-muted/20">
+        <div className="flex justify-end px-5 py-3 border-t border-border/60 bg-muted/20">
           <Button variant="outline" className="rounded-lg text-xs h-8" onClick={onClose}>
-            {b('取消', 'Cancel')}
-          </Button>
-          <Button className="rounded-lg text-xs h-8" onClick={handleSave}>
-            <Save className="w-3.5 h-3.5 mr-1.5" />
-            {b('保存', 'Save')}
+            {b('关闭', 'Close')}
           </Button>
         </div>
       </div>

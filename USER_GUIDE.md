@@ -29,7 +29,7 @@
 | 💬 上下文对话 | 围绕文档内容自由对话 |
 | 📒 智能笔记 | AI 生成候选笔记，人工确认后持久化存储 |
 | 🧠 深度思考 | Qwen3 真正的思考模式 |
-| 📕 离线词典 | 内置 ECDICT 英汉词典，双击查词 |
+| � 离线词典 | ECDICT + CC-CEDICT 词典，中英互译，选词即查 |
 | 🌐 多种后端 | 也支持 Ollama、OpenAI 兼容 API |
 
 ### 界面布局
@@ -154,7 +154,7 @@ PDF 和 EPUB 支持目录侧栏，两种打开方式：
 
 ### 词典弹窗
 
-**双击**文档中的单词弹出词典窗口，支持英汉/汉英，可在设置中独立开关。
+**双击**文档中的单词弹出词典窗口，支持中英互译，选词即查。
 
 ### 笔记系统
 
@@ -181,6 +181,21 @@ PDF 和 EPUB 支持目录侧栏，两种打开方式：
 | 🌐 OpenAI Compatible | 连接任何 OpenAI 兼容 API |
 
 内置 AI 提供**简易模式**（一键配置）和**高级模式**（手动选型、GPU 配置、模型管理）。
+
+**智能分级策略：** 系统采用三层自适应策略自动匹配最流畅的模型：
+
+1. **硬件探测** — 检测 GPU 类型与显存，选择最佳计算模式（CUDA / Vulkan / CPU）。集成显卡（Intel UHD/HD/Iris，显存 < 2GB）自动回退 CPU 模式。
+2. **资源初筛** — 根据 CPU 核心数、内存、显存快速预估模型级别。
+3. **基准测试** — 用 llama-bench 实测 0.6B 模型推理速度 (tok/s)，精确选择最流畅的模型。
+
+| 基准测试结果 | 推荐模型 |
+|:---|:---|
+| ≥ 100 tok/s | Qwen3-8B (T3) |
+| 50–99 tok/s | Qwen3-4B (T2) |
+| 20–49 tok/s | Qwen3-1.7B (T1) |
+| < 20 tok/s | Qwen3-0.6B (T0) |
+
+**模型降级：** 如果觉得当前模型太慢，简易模式下有「降级到更小模型」按钮，一键切换。
 
 可用模型：
 
@@ -225,6 +240,18 @@ PDF 和 EPUB 支持目录侧栏，两种打开方式：
 **Q: 支持哪些 GPU？**
 NVIDIA (CUDA 12.4/13.1)、AMD/Intel (Vulkan)、CPU 模式（所有电脑可用）。
 
+**Q: 集成显卡（Intel UHD）为什么不用 GPU 加速？**
+集成显卡显存通常 < 2GB，实测 GPU 加速反而比纯 CPU 慢。系统会自动检测并回退到 CPU 模式。
+
+**Q: 模型太慢怎么办？**
+简易模式下有「降级到更小模型」按钮；或在高级模式中手动选择更小的模型。
+
+**Q: 如何卸载？**
+Windows 设置 → 应用 → 搜索 "Aireader" → 卸载。用户数据存储在 `%APPDATA%/com.aireader.app/`，卸载时不会删除，如需彻底清理请手动删除。
+
+**Q: 如何更新？**
+下载新版安装包直接运行即可，自动覆盖旧版本。文档、笔记、模型和设置均会保留。
+
 ---
 
 <a id="english"></a>
@@ -246,7 +273,7 @@ NVIDIA (CUDA 12.4/13.1)、AMD/Intel (Vulkan)、CPU 模式（所有电脑可用�
 | 💬 Contextual Chat | Free-form chat about document content |
 | 📒 Smart Notes | AI-generated draft notes, human-confirmed persistent storage |
 | 🧠 Deep Thinking | True thinking mode with Qwen3 |
-| 📕 Offline Dictionary | Built-in ECDICT, double-click to look up words |
+| � Offline Dictionary | ECDICT + CC-CEDICT, bidirectional Chinese-English lookup |
 | 🌐 Multiple Backends | Also supports Ollama, OpenAI-compatible APIs |
 
 ### Interface Layout
@@ -399,6 +426,21 @@ Click the ⚙ button in the header. Three tabs:
 
 Built-in AI provides **Simple Mode** (one-click setup) and **Advanced Mode** (manual model selection, GPU configuration, model management).
 
+**Smart Tier Strategy:** The system uses a 3-layer adaptive strategy to match the smoothest model for your hardware:
+
+1. **Hardware Detection** — Detect GPU type & VRAM, select optimal compute mode (CUDA / Vulkan / CPU). Integrated GPUs (Intel UHD/HD/Iris, VRAM < 2GB) automatically fall back to CPU mode.
+2. **Resource Pre-filter** — Quick estimate based on CPU cores, RAM, and VRAM.
+3. **Benchmark** — Run llama-bench on the 0.6B model to measure actual inference speed (tok/s), then precisely select the smoothest model.
+
+| Benchmark Result | Recommended Model |
+|:---|:---|
+| ≥ 100 tok/s | Qwen3-8B (T3) |
+| 50–99 tok/s | Qwen3-4B (T2) |
+| 20–49 tok/s | Qwen3-1.7B (T1) |
+| < 20 tok/s | Qwen3-0.6B (T0) |
+
+**Model Downgrade:** If the current model feels too slow, Simple Mode provides a "Downgrade to a smaller model" button for one-click switching.
+
 Available models:
 
 | Model | Size | Description |
@@ -441,6 +483,18 @@ Built-in models truly disable/enable thinking. Ollama uses soft disable (still t
 
 **Q: Which GPUs are supported?**
 NVIDIA (CUDA 12.4/13.1), AMD/Intel (Vulkan), CPU mode (works on all computers).
+
+**Q: Why doesn't my integrated GPU (Intel UHD) use GPU acceleration?**
+Integrated GPUs typically have < 2GB VRAM. GPU acceleration is actually slower than pure CPU mode in this case. The system auto-detects and falls back to CPU mode.
+
+**Q: The model is too slow, what can I do?**
+In Simple Mode, use the "Downgrade to a smaller model" button; or manually select a smaller model in Advanced Mode.
+
+**Q: How to uninstall?**
+Windows Settings → Apps → search "Aireader" → Uninstall. User data is stored in `%APPDATA%/com.aireader.app/` and is not removed on uninstall. Delete manually if needed.
+
+**Q: How to update?**
+Download and run the new installer. It will overwrite the previous version automatically. Your documents, notes, models and settings are preserved.
 
 ---
 

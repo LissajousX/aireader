@@ -117,6 +117,7 @@ impl BuiltinLlmManager {
     }
 
     pub fn stop(&self) {
+        let port_to_clean = *self.port.lock().unwrap();
         if let Some(mut child) = self.child.lock().unwrap().take() {
             // On Windows, kill the entire process tree using taskkill
             #[cfg(target_os = "windows")]
@@ -133,6 +134,19 @@ impl BuiltinLlmManager {
                 let _ = child.kill();
             }
             let _ = child.wait();
+        } else if let Some(port) = port_to_clean {
+            // Fallback: child handle lost but we know the port — find and kill the
+            // process listening on that port (only our instance, not others)
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(pid) = find_pid_by_port(port) {
+                    use std::os::windows::process::CommandExt;
+                    let _ = Command::new("taskkill")
+                        .args(["/F", "/T", "/PID", &pid.to_string()])
+                        .creation_flags(0x08000000)
+                        .output();
+                }
+            }
         }
         *self.port.lock().unwrap() = None;
         *self.model_path.lock().unwrap() = None;
@@ -147,6 +161,38 @@ impl Drop for BuiltinLlmManager {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+/// Find the PID of a process listening on a given TCP port (Windows only).
+/// Uses `netstat -ano` and parses output to find LISTENING entries on the port.
+#[cfg(target_os = "windows")]
+fn find_pid_by_port(port: u16) -> Option<u32> {
+    use std::os::windows::process::CommandExt;
+    let output = Command::new("netstat")
+        .args(["-ano", "-p", "TCP"])
+        .creation_flags(0x08000000)
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let needle = format!(":{}", port);
+    for line in text.lines() {
+        let line = line.trim();
+        if !line.contains("LISTENING") {
+            continue;
+        }
+        // Format: TCP  0.0.0.0:PORT  0.0.0.0:0  LISTENING  PID
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 5 {
+            if let Some(addr) = parts.get(1) {
+                if addr.ends_with(&needle) {
+                    if let Some(pid_str) = parts.last() {
+                        return pid_str.parse::<u32>().ok();
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 fn normalize_cuda_version(raw: Option<&str>) -> &'static str {
@@ -185,9 +231,8 @@ fn normalize_gpu_backend(raw: Option<&str>) -> &'static str {
     }
 }
 
-fn models_dir(llm_dir: &Path) -> PathBuf {
-    llm_dir.join("models")
-}
+// models_dir is now a direct user-configurable path stored in AppState.models_dir
+// No wrapper needed — pass it directly to model_file_path etc.
 
 fn sanitize_model_id(raw: Option<String>) -> String {
     let raw = raw.unwrap_or_else(|| "qwen3_0_6b_q4_k_m".to_string());
@@ -276,23 +321,23 @@ fn model_urls(model_id: &str) -> [&'static str; 3] {
     }
 }
 
-fn model_file_path(llm_dir: &Path, model_id: &str) -> PathBuf {
+fn model_file_path(models_dir: &Path, model_id: &str) -> PathBuf {
     if is_builtin_qwen3_model_id(model_id) {
-        return models_dir(llm_dir).join(model_file_name(model_id));
+        return models_dir.join(model_file_name(model_id));
     }
     let id = model_id.trim_end_matches(".gguf");
-    models_dir(llm_dir).join(format!("{id}.gguf"))
+    models_dir.join(format!("{id}.gguf"))
 }
 
-fn model_candidate_paths(llm_dir: &Path, model_id: &str) -> Vec<PathBuf> {
-    let mut out = vec![model_file_path(llm_dir, model_id)];
+fn model_candidate_paths(models_dir: &Path, model_id: &str) -> Vec<PathBuf> {
+    let mut out = vec![model_file_path(models_dir, model_id)];
     if let Some(legacy) = legacy_model_file_name(model_id) {
-        out.push(models_dir(llm_dir).join(legacy));
+        out.push(models_dir.join(legacy));
     }
     out
 }
 
-fn model_id_from_path(llm_dir: &Path, path: &Path) -> Option<String> {
+fn model_id_from_path(models_dir: &Path, path: &Path) -> Option<String> {
     for id in [
         "qwen3_0_6b_q4_k_m",
         "qwen3_1_7b_q4_k_m",
@@ -301,12 +346,12 @@ fn model_id_from_path(llm_dir: &Path, path: &Path) -> Option<String> {
         "qwen3_8b_q4_k_m",
         "qwen3_8b_q5_k_m",
     ] {
-        if path == model_file_path(llm_dir, id) {
+        if path == model_file_path(models_dir, id) {
             return Some(id.to_string());
         }
     }
 
-    let models = models_dir(llm_dir);
+    let models = models_dir;
     if let Ok(rel) = path.strip_prefix(&models) {
         if let Some(stem) = rel.file_stem().and_then(|s| s.to_str()) {
             let id = sanitize_model_id(Some(stem.to_string()));
@@ -573,6 +618,36 @@ fn safe_zip_extract_with_progress(
     Ok(())
 }
 
+/// Auto-extract bundled CPU runtime on first launch (called from setup).
+/// Silent — logs errors but does not fail the app.
+pub fn auto_install_cpu_runtime(app: &AppHandle, llm_dir: &Path) {
+    let rt = runtime_dir(llm_dir, "cpu", "vulkan", "12.4");
+    if find_llama_server(&rt).is_some() {
+        return; // already installed
+    }
+    let _ = std::fs::create_dir_all(&rt);
+    let zip_name = "llama-b7927-bin-win-cpu-x64.zip";
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let candidates = [
+            resource_dir.join("llm").join("runtime").join(zip_name),
+            resource_dir.join("resources").join("llm").join("runtime").join(zip_name),
+        ];
+        for z in candidates {
+            if z.exists() {
+                match safe_zip_extract(&z, &rt) {
+                    Ok(_) => {
+                        println!("[builtin_llm] CPU runtime auto-extracted from {}", z.display());
+                        return;
+                    }
+                    Err(e) => {
+                        eprintln!("[builtin_llm] Failed to extract CPU runtime: {}", e);
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn pick_free_port() -> Result<u16, String> {
     let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| e.to_string())?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
@@ -765,11 +840,10 @@ async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode:
     ))
 }
 
-async fn ensure_model_with_mode(app: &AppHandle, llm_dir: &Path, model_id: &str, allow_download: bool, custom_url: Option<&str>, cancel: &AtomicBool, progress_ch: &Channel<DownloadProgress>) -> Result<PathBuf, String> {
-    let models = models_dir(llm_dir);
-    std::fs::create_dir_all(&models).map_err(|e| e.to_string())?;
+async fn ensure_model_with_mode(app: &AppHandle, models_dir: &Path, model_id: &str, allow_download: bool, custom_url: Option<&str>, cancel: &AtomicBool, progress_ch: &Channel<DownloadProgress>) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(models_dir).map_err(|e| e.to_string())?;
 
-    for cand in model_candidate_paths(llm_dir, model_id) {
+    for cand in model_candidate_paths(models_dir, model_id) {
         if cand.exists() {
             return Ok(cand);
         }
@@ -779,7 +853,7 @@ async fn ensure_model_with_mode(app: &AppHandle, llm_dir: &Path, model_id: &str,
         return Err("custom model not found. Please import a GGUF file from Settings.".to_string());
     }
 
-    let target = model_file_path(llm_dir, model_id);
+    let target = model_file_path(models_dir, model_id);
     if let Some(parent) = target.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -830,11 +904,12 @@ async fn ensure_model_with_mode(app: &AppHandle, llm_dir: &Path, model_id: &str,
 
 fn status_from(state: &AppState, model_id: &str) -> BuiltinLlmStatus {
     let running = state.builtin_llm.is_running();
+    let models = state.models_dir.read().unwrap();
     let running_model_id = if running {
         state
             .builtin_llm
             .current_model_path()
-            .and_then(|p| model_id_from_path(&state.llm_dir, &p))
+            .and_then(|p| model_id_from_path(&models, &p))
     } else {
         None
     };
@@ -850,7 +925,7 @@ fn status_from(state: &AppState, model_id: &str) -> BuiltinLlmStatus {
 
     BuiltinLlmStatus {
         runtime_installed: runtime_installed(&state.llm_dir, "cpu", "vulkan"),
-        model_installed: model_candidate_paths(&state.llm_dir, model_id).iter().any(|p| p.exists()),
+        model_installed: model_candidate_paths(&models, model_id).iter().any(|p| p.exists()),
         model_id: model_id.to_string(),
         running_model_id,
         running_this_model,
@@ -882,13 +957,17 @@ pub fn builtin_llm_status(state: State<AppState>, options: Option<BuiltinLlmOpti
 }
 
 fn probe_vram_bytes_from_nvidia_smi() -> Option<u64> {
-    let out = Command::new("nvidia-smi")
-        .args([
-            "--query-gpu=memory.total",
-            "--format=csv,noheader,nounits",
-        ])
-        .output()
-        .ok()?;
+    let mut cmd = Command::new("nvidia-smi");
+    cmd.args([
+        "--query-gpu=memory.total",
+        "--format=csv,noheader,nounits",
+    ]);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    let out = cmd.output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -917,10 +996,13 @@ fn probe_vram_bytes_windows() -> Option<u64> {
     }
 
     // wmic may not exist on recent Windows, so this is best-effort.
-    let out = Command::new("wmic")
-        .args(["path", "win32_VideoController", "get", "AdapterRAM"])
-        .output()
-        .ok();
+    let out = {
+        let mut cmd = Command::new("wmic");
+        cmd.args(["path", "win32_VideoController", "get", "AdapterRAM"]);
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        cmd.output().ok()
+    };
 
     if let Some(out) = out {
         if out.status.success() {
@@ -947,14 +1029,17 @@ fn probe_vram_bytes_windows() -> Option<u64> {
     }
 
     // PowerShell fallback
-    let out = Command::new("powershell")
-        .args([
+    let out = {
+        let mut cmd = Command::new("powershell");
+        cmd.args([
             "-NoProfile",
             "-Command",
             "(Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty AdapterRAM) -join '\n'",
-        ])
-        .output()
-        .ok()?;
+        ]);
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        cmd.output().ok()?
+    };
     if !out.status.success() {
         return None;
     }
@@ -1044,22 +1129,66 @@ pub struct BuiltinProbeResult {
 fn probe_gpu_name() -> Option<String> {
     #[cfg(target_os = "windows")]
     {
-        let out = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                "(Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join ', '",
-            ])
-            .output()
-            .ok()?;
+        let mut cmd = Command::new("powershell");
+        cmd.args([
+            "-NoProfile",
+            "-Command",
+            "(Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name) -join ', '",
+        ]);
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        let out = cmd.output().ok()?;
         if out.status.success() {
             let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if !s.is_empty() {
+                // Filter out virtual display drivers (e.g. Oray/Sunlogin, Parsec, RDP)
+                let real_gpus: Vec<&str> = s.split(',')
+                    .map(|g| g.trim())
+                    .filter(|g| {
+                        let lower = g.to_ascii_lowercase();
+                        !lower.contains("idddriver")
+                            && !lower.contains("virtual")
+                            && !lower.contains("remote")
+                            && !lower.contains("parsec")
+                            && !lower.contains("rdp")
+                    })
+                    .collect();
+                if !real_gpus.is_empty() {
+                    return Some(real_gpus.join(", "));
+                }
                 return Some(s);
             }
         }
     }
     None
+}
+
+/// Check if the detected GPU is worth using for LLM inference.
+/// Returns false for integrated GPUs with low VRAM, virtual display drivers, etc.
+fn is_gpu_worth_using(gpu_name: &Option<String>, vram_bytes: Option<u64>) -> bool {
+    let vram_gb = vram_bytes.unwrap_or(0) / 1024 / 1024 / 1024;
+
+    // VRAM < 2GB: definitely not worth it (integrated GPU territory)
+    if vram_gb < 2 {
+        return false;
+    }
+
+    // Check for known integrated/virtual GPU patterns
+    if let Some(name) = gpu_name {
+        let lower = name.to_ascii_lowercase();
+        // Intel integrated GPUs
+        if lower.contains("intel") && (lower.contains("uhd") || lower.contains(" hd ") || lower.contains("iris")) {
+            return false;
+        }
+        // Virtual display drivers
+        if lower.contains("idddriver") || lower.contains("virtual") || lower.contains("remote") {
+            return false;
+        }
+    }
+
+    true
 }
 
 #[tauri::command]
@@ -1117,20 +1246,31 @@ pub struct BuiltinAutoStartResult {
     pub probe: BuiltinProbeResult,
 }
 
-/// T8: Consider both RAM and dedicated GPU VRAM when selecting tier.
-/// - GPU mode: model must fit entirely in VRAM → min(vram_tier, ram_tier)
-///   (RAM still needed for mmap during load, so can't exceed ram_tier either)
-/// - Hybrid mode: model size determined by RAM, GPU only accelerates some layers → ram_tier
-///   (cap_tier_by_vram applied separately to prevent GPU OOM on the loaded layers)
-/// - CPU mode: only RAM matters → ram_tier
-fn tier_from_resources(total_mem_gb: u64, vram_bytes: Option<u64>, compute_mode: &str) -> i32 {
+/// CPU performance tier based on logical core count (targeting fluency ≥ 8 tok/s).
+/// Conservative: prefer a smaller model that runs smoothly over a larger model that stutters.
+/// Thresholds from real-world testing: i7-10700 (16 threads) — 4B acceptable but not fluent,
+/// 1.7B fluent. Quick-setup benchmark will refine this estimate with actual tok/s measurement.
+fn cpu_performance_tier(cpu_cores: usize) -> i32 {
+    if cpu_cores >= 24 { 3 }       // 12+ physical cores (Ryzen 9, i9-12900+) → 8B
+    else if cpu_cores >= 20 { 2 }  // 10 physical cores (i9-10900K) → 4B
+    else if cpu_cores >= 8 { 1 }   // 4-9 physical cores (i7-10700 = 16 threads, i5) → 1.7B
+    else { 0 }                     // < 4 physical cores → 0.6B
+}
+
+/// Consider RAM, CPU performance, and GPU VRAM when selecting tier.
+/// - CPU mode: min(ram_tier, cpu_tier) — both memory and compute must be sufficient
+/// - GPU mode: min(ram_tier, vram_tier) — model must fit in VRAM
+/// - Hybrid mode: min(ram_tier, cpu_tier) — RAM + CPU for model, GPU accelerates layers
+fn tier_from_resources(total_mem_gb: u64, vram_bytes: Option<u64>, compute_mode: &str, cpu_cores: usize) -> i32 {
     let ram_tier = if total_mem_gb < 8 { 0 }
         else if total_mem_gb < 12 { 1 }
         else if total_mem_gb < 20 { 2 }
         else { 3 };
 
+    let cpu_tier = cpu_performance_tier(cpu_cores);
+
     if compute_mode == "cpu" {
-        return ram_tier;
+        return ram_tier.min(cpu_tier);
     }
 
     let vram_gb = vram_bytes.unwrap_or(0) / 1024 / 1024 / 1024;
@@ -1143,9 +1283,9 @@ fn tier_from_resources(total_mem_gb: u64, vram_bytes: Option<u64>, compute_mode:
         // GPU mode: VRAM is hard constraint, also can't exceed RAM capacity
         ram_tier.min(vram_tier)
     } else {
-        // Hybrid mode: RAM determines model size, VRAM provides acceleration
-        // (gpu_layers will be capped by clamp_gpu_layers_by_vram separately)
-        ram_tier
+        // Hybrid mode: RAM determines model size, CPU+GPU share compute
+        // GPU layers capped separately by clamp_gpu_layers_by_vram
+        ram_tier.min(cpu_tier)
     }
 }
 
@@ -1220,6 +1360,8 @@ pub fn builtin_llm_recommend(options: Option<BuiltinRecommendOptions>) -> Result
     let preferred_compute = normalize_preferred_compute(options.as_ref().and_then(|o| o.preferred_compute.as_deref()));
     let cuda_version = normalize_cuda_version(options.as_ref().and_then(|o| o.cuda_version.as_deref()));
 
+    let gpu_useful = is_gpu_worth_using(&probe.gpu_name, probe.vram_bytes);
+
     let (compute_mode, gpu_backend) = if let Some(pc) = preferred_compute {
         let backend = if (pc == "gpu" || pc == "hybrid") && probe.has_cuda {
             "cuda"
@@ -1227,16 +1369,16 @@ pub fn builtin_llm_recommend(options: Option<BuiltinRecommendOptions>) -> Result
             "vulkan"
         };
         (pc.to_string(), backend.to_string())
-    } else if probe.has_cuda {
+    } else if probe.has_cuda && gpu_useful {
         ("gpu".to_string(), "cuda".to_string())
-    } else if probe.has_vulkan {
+    } else if probe.has_vulkan && gpu_useful {
         ("hybrid".to_string(), "vulkan".to_string())
     } else {
-        ("cpu".to_string(), "vulkan".to_string())
+        ("cpu".to_string(), "none".to_string())
     };
 
     let mut tier = preferred_tier.unwrap_or_else(|| {
-        tier_from_resources(total_mem_gb, probe.vram_bytes, &compute_mode)
+        tier_from_resources(total_mem_gb, probe.vram_bytes, &compute_mode, probe.cpu_cores)
     });
     tier = tier.clamp(0, 3);
 
@@ -1271,23 +1413,25 @@ pub async fn builtin_llm_auto_start(
     let preferred_tier = parse_preferred_tier(options.as_ref().and_then(|o| o.preferred_tier.as_deref()));
     let preferred_compute = normalize_preferred_compute(options.as_ref().and_then(|o| o.preferred_compute.as_deref()));
 
+    let gpu_useful = is_gpu_worth_using(&probe.gpu_name, probe.vram_bytes);
+
     let mut compute_candidates: Vec<(&'static str, &'static str)> = vec![];
     if let Some(pc) = preferred_compute {
         let backend = if (pc == "gpu" || pc == "hybrid") && probe.has_cuda { "cuda" } else { "vulkan" };
         compute_candidates.push((pc, backend));
     } else {
-        if probe.has_cuda {
+        if probe.has_cuda && gpu_useful {
             compute_candidates.push(("gpu", "cuda"));
         }
-        if probe.has_vulkan {
+        if probe.has_vulkan && gpu_useful {
             compute_candidates.push(("hybrid", "vulkan"));
         }
-        compute_candidates.push(("cpu", "vulkan"));
+        compute_candidates.push(("cpu", "none"));
     }
 
     for (compute_mode, gpu_backend) in compute_candidates {
         let mut tier = preferred_tier.unwrap_or_else(|| {
-            tier_from_resources(total_mem_gb, probe.vram_bytes, compute_mode)
+            tier_from_resources(total_mem_gb, probe.vram_bytes, compute_mode, probe.cpu_cores)
         });
         tier = tier.clamp(0, 3);
 
@@ -1348,7 +1492,7 @@ pub struct BuiltinModelInfo {
 
 #[tauri::command]
 pub fn builtin_llm_list_models(state: State<AppState>) -> Result<Vec<BuiltinModelInfo>, String> {
-    let dir = models_dir(&state.llm_dir);
+    let dir = state.models_dir.read().unwrap().clone();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     let mut out: Vec<BuiltinModelInfo> = vec![];
@@ -1417,9 +1561,10 @@ pub async fn builtin_llm_install(
     let custom_url = options.as_ref().and_then(|o| o.model_url.as_deref());
     let rt_url = options.as_ref().and_then(|o| o.runtime_url.as_deref());
     let cudart_url = options.as_ref().and_then(|o| o.cudart_url.as_deref());
+    let models_dir = state.models_dir.read().unwrap().clone();
     state.download_cancel.store(false, Ordering::Relaxed);
     let _ = ensure_runtime_with_mode(&app, &state.llm_dir, compute_mode, gpu_backend, cuda_version, rt_url, cudart_url, &state.download_cancel, &on_progress).await?;
-    let _ = ensure_model_with_mode(&app, &state.llm_dir, &model_id, allow_download, custom_url, &state.download_cancel, &on_progress).await?;
+    let _ = ensure_model_with_mode(&app, &models_dir, &model_id, allow_download, custom_url, &state.download_cancel, &on_progress).await?;
     Ok(status_from_options(&state, &model_id, &options))
 }
 
@@ -1447,7 +1592,7 @@ async fn ensure_running_impl(
         let current_id = state
             .builtin_llm
             .current_model_path()
-            .and_then(|p| model_id_from_path(&state.llm_dir, &p));
+            .and_then(|p| model_id_from_path(&state.models_dir.read().unwrap(), &p));
         let current_compute = state
             .builtin_llm
             .compute_mode
@@ -1492,9 +1637,10 @@ async fn ensure_running_impl(
     let custom_url = options.as_ref().and_then(|o| o.model_url.as_deref());
     let rt_url = options.as_ref().and_then(|o| o.runtime_url.as_deref());
     let cudart_url = options.as_ref().and_then(|o| o.cudart_url.as_deref());
+    let models_dir = state.models_dir.read().unwrap().clone();
     state.download_cancel.store(false, Ordering::Relaxed);
     let server = ensure_runtime_with_mode(app, &state.llm_dir, compute_mode, gpu_backend, cuda_version, rt_url, cudart_url, &state.download_cancel, progress_ch).await?;
-    let model = ensure_model_with_mode(app, &state.llm_dir, &model_id, allow_download, custom_url, &state.download_cancel, progress_ch).await?;
+    let model = ensure_model_with_mode(app, &models_dir, &model_id, allow_download, custom_url, &state.download_cancel, progress_ch).await?;
 
     let port = pick_free_port()?;
 
@@ -1572,14 +1718,14 @@ pub fn builtin_llm_delete_model(state: State<AppState>, options: Option<BuiltinL
         let current_id = state
             .builtin_llm
             .current_model_path()
-            .and_then(|p| model_id_from_path(&state.llm_dir, &p));
+            .and_then(|p| model_id_from_path(&state.models_dir.read().unwrap(), &p));
         if current_id.as_deref() == Some(&model_id) {
             return Err("Cannot delete a model that is currently running. Stop it first.".to_string());
         }
     }
 
     let mut deleted = false;
-    for cand in model_candidate_paths(&state.llm_dir, &model_id) {
+    for cand in model_candidate_paths(&state.models_dir.read().unwrap(), &model_id) {
         if cand.exists() {
             std::fs::remove_file(&cand).map_err(|e| format!("Failed to delete {}: {}", cand.display(), e))?;
             deleted = true;
@@ -1728,9 +1874,10 @@ pub async fn builtin_llm_import_model(state: State<'_, AppState>, path: String, 
     }
     let model_id = sanitize_model_id(model_id);
 
-    let desired = model_file_path(&state.llm_dir, &model_id);
+    let mdir = state.models_dir.read().unwrap().clone();
+    let desired = model_file_path(&mdir, &model_id);
     let target = if desired.exists() {
-        let models = models_dir(&state.llm_dir);
+        let models = mdir.clone();
         let base_name = desired.file_name().and_then(|s| s.to_str()).unwrap_or("model.gguf");
         let stem = Path::new(base_name).file_stem().and_then(|s| s.to_str()).unwrap_or("model");
         let ext = "gguf";
@@ -1760,4 +1907,183 @@ pub async fn builtin_llm_import_model(state: State<'_, AppState>, path: String, 
     }
 
     Ok(status_from(&state, &model_id))
+}
+
+// ---------------------------------------------------------------------------
+// Benchmark: measure generation tok/s using llama-bench (no server needed)
+// ---------------------------------------------------------------------------
+
+fn find_llama_bench(runtime: &Path) -> Option<PathBuf> {
+    let candidates = [
+        runtime.join("llama-bench.exe"),
+        runtime.join("llama-bench"),
+    ];
+    for c in candidates {
+        if c.exists() {
+            return Some(c);
+        }
+    }
+    for entry in walkdir::WalkDir::new(runtime).max_depth(2).into_iter().filter_map(|e| e.ok()) {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        if name == "llama-bench.exe" || name == "llama-bench" {
+            return Some(entry.path().to_path_buf());
+        }
+    }
+    None
+}
+
+#[derive(Debug, Serialize)]
+pub struct BenchmarkResult {
+    #[serde(rename = "tokensPerSecond")]
+    pub tokens_per_second: f64,
+    #[serde(rename = "completionTokens")]
+    pub completion_tokens: u64,
+    #[serde(rename = "elapsedMs")]
+    pub elapsed_ms: u64,
+    #[serde(rename = "recommendedTier")]
+    pub recommended_tier: i32,
+    #[serde(rename = "recommendedModelId")]
+    pub recommended_model_id: String,
+}
+
+/// Determine model tier from 0.6B benchmark tok/s.
+/// Model size scaling (approximate, memory-bandwidth bound):
+///   1.7B ≈ 2.8x slower,  4B ≈ 6.5x slower,  8B ≈ 13x slower
+/// Fluency target: ≥ 8 tok/s generation speed.
+fn tier_from_benchmark(tps: f64, total_mem_gb: u64) -> (i32, String) {
+    let tier = if tps >= 100.0 { 3 }      // 8B estimated ~7.7 tok/s
+        else if tps >= 50.0 { 2 }          // 4B estimated ~7.7 tok/s
+        else if tps >= 20.0 { 1 }          // 1.7B estimated ~7.1 tok/s
+        else { 0 };                         // stay with 0.6B
+
+    // Also cap by RAM
+    let ram_tier = if total_mem_gb < 8 { 0 }
+        else if total_mem_gb < 12 { 1 }
+        else if total_mem_gb < 20 { 2 }
+        else { 3 };
+    let final_tier = tier.min(ram_tier);
+    let model_id = tier_to_model_id(final_tier, total_mem_gb);
+    (final_tier, model_id)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BenchmarkOptions {
+    #[serde(rename = "computeMode")]
+    pub compute_mode: Option<String>,
+    #[serde(rename = "gpuBackend")]
+    pub gpu_backend: Option<String>,
+    #[serde(rename = "cudaVersion")]
+    pub cuda_version: Option<String>,
+    #[serde(rename = "gpuLayers")]
+    pub gpu_layers: Option<i32>,
+}
+
+#[tauri::command]
+pub async fn builtin_llm_benchmark(
+    state: State<'_, AppState>,
+    options: Option<BenchmarkOptions>,
+) -> Result<BenchmarkResult, String> {
+    let compute_mode = normalize_compute_mode(options.as_ref().and_then(|o| o.compute_mode.as_deref()));
+    let gpu_backend = normalize_gpu_backend(options.as_ref().and_then(|o| o.gpu_backend.as_deref()));
+    let cuda_version = normalize_cuda_version(options.as_ref().and_then(|o| o.cuda_version.as_deref()));
+    let gpu_layers = options.as_ref().and_then(|o| o.gpu_layers).unwrap_or(20);
+
+    // Find llama-bench in runtime directory, fall back to CPU runtime
+    let rt = runtime_dir(&state.llm_dir, compute_mode, gpu_backend, cuda_version);
+    let bench_exe = find_llama_bench(&rt)
+        .or_else(|| {
+            if compute_mode != "cpu" {
+                let cpu_rt = runtime_dir(&state.llm_dir, "cpu", "vulkan", "12.4");
+                find_llama_bench(&cpu_rt)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| format!("llama-bench not found in {} (also checked CPU runtime)", rt.display()))?;
+
+    // Find 0.6B benchmark model
+    let model_path = model_file_path(&state.models_dir.read().unwrap(), "qwen3_0_6b_q4_k_m");
+    if !model_path.exists() {
+        return Err("Benchmark model (Qwen3-0.6B) not installed".to_string());
+    }
+
+    let ngl = if compute_mode == "gpu" || compute_mode == "hybrid" {
+        clamp_gpu_layers_by_vram(gpu_layers, probe_vram_bytes()).to_string()
+    } else {
+        "0".to_string()
+    };
+
+    // Run llama-bench: generation-only, 1 repetition, JSON output
+    #[cfg(target_os = "windows")]
+    let output = {
+        use std::os::windows::process::CommandExt;
+        Command::new(&bench_exe)
+            .args([
+                "-m", &model_path.to_string_lossy(),
+                "-p", "0",        // skip prompt processing test
+                "-n", "64",       // generate 64 tokens
+                "-r", "1",        // 1 repetition (fast)
+                "-ngl", &ngl,
+                "-o", "json",
+            ])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .output()
+            .map_err(|e| format!("failed to run llama-bench: {e}"))?
+    };
+    #[cfg(not(target_os = "windows"))]
+    let output = Command::new(&bench_exe)
+        .args([
+            "-m", &model_path.to_string_lossy(),
+            "-p", "0",
+            "-n", "64",
+            "-r", "1",
+            "-ngl", &ngl,
+            "-o", "json",
+        ])
+        .output()
+        .map_err(|e| format!("failed to run llama-bench: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if !output.status.success() && stdout.trim().is_empty() {
+        return Err(format!("llama-bench failed (exit {}): {}", output.status, stderr.lines().last().unwrap_or("")));
+    }
+
+    // Parse JSON array output from llama-bench
+    let results: Vec<serde_json::Value> = serde_json::from_str(stdout.trim())
+        .map_err(|e| format!("failed to parse llama-bench JSON: {e}\nstdout: {stdout}"))?;
+
+    // Find generation test result (n_gen > 0)
+    let gen_result = results.iter()
+        .find(|r| r["n_gen"].as_u64().unwrap_or(0) > 0)
+        .ok_or("no generation benchmark result in llama-bench output")?;
+
+    let tokens_per_second = gen_result["avg_ts"].as_f64().unwrap_or(0.0);
+    let completion_tokens = gen_result["n_gen"].as_u64().unwrap_or(0);
+    let avg_ns = gen_result["avg_ns"].as_f64().unwrap_or(0.0);
+    let elapsed_ms = (avg_ns / 1_000_000.0) as u64;
+
+    if tokens_per_second <= 0.0 {
+        return Err("llama-bench returned 0 tok/s".to_string());
+    }
+
+    let total_mem_gb = {
+        let mut sys = System::new_all();
+        sys.refresh_memory();
+        sys.total_memory() / 1024 / 1024 / 1024
+    };
+
+    let (recommended_tier, recommended_model_id) = tier_from_benchmark(tokens_per_second, total_mem_gb);
+
+    Ok(BenchmarkResult {
+        tokens_per_second,
+        completion_tokens,
+        elapsed_ms,
+        recommended_tier,
+        recommended_model_id,
+    })
 }

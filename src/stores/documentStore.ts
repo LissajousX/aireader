@@ -13,6 +13,7 @@ interface DocumentState {
   aiPanelWidth: number;
 
   settingsOpen: boolean;
+  settingsInitialTab: 'general' | 'ai' | 'storage';
   libraryOpen: boolean;
   helpOpen: boolean;
   
@@ -25,6 +26,7 @@ interface DocumentState {
   openAIPanel: () => void;
   closeAIPanel: () => void;
   openSettings: () => void;
+  openSettingsTab: (tab: 'general' | 'ai' | 'storage') => void;
   closeSettings: () => void;
   openLibrary: () => void;
   closeLibrary: () => void;
@@ -50,6 +52,7 @@ export const useDocumentStore = create<DocumentState>()(
       aiPanelWidth: 400,
 
       settingsOpen: false,
+      settingsInitialTab: 'general' as const,
       libraryOpen: false,
       helpOpen: false,
 
@@ -69,7 +72,8 @@ export const useDocumentStore = create<DocumentState>()(
       toggleAIPanel: () => set((state) => ({ aiPanelOpen: !state.aiPanelOpen })),
       openAIPanel: () => set({ aiPanelOpen: true }),
       closeAIPanel: () => set({ aiPanelOpen: false }),
-      openSettings: () => set({ settingsOpen: true }),
+      openSettings: () => set({ settingsOpen: true, settingsInitialTab: 'general' }),
+      openSettingsTab: (tab) => set({ settingsOpen: true, settingsInitialTab: tab }),
       closeSettings: () => set({ settingsOpen: false }),
       openLibrary: () => set({ libraryOpen: true }),
       closeLibrary: () => set({ libraryOpen: false }),
