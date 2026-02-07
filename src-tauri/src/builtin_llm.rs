@@ -560,10 +560,6 @@ fn file_starts_with(path: &Path, magic: &[u8]) -> bool {
     buf == magic
 }
 
-fn safe_zip_extract(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
-    safe_zip_extract_with_progress(zip_path, dest_dir, None, None, "")
-}
-
 fn safe_zip_extract_with_progress(
     zip_path: &Path,
     dest_dir: &Path,
@@ -650,6 +646,86 @@ fn safe_zip_extract_with_progress(
     Ok(())
 }
 
+/// Extract a .tar.gz archive using system `tar` command (available on macOS/Linux).
+#[cfg(not(target_os = "windows"))]
+fn safe_tar_extract_with_progress(
+    tar_path: &Path,
+    dest_dir: &Path,
+    app: Option<&AppHandle>,
+    ch: Option<&Channel<DownloadProgress>>,
+    label: &str,
+) -> Result<(), String> {
+    std::fs::create_dir_all(dest_dir).map_err(|e| e.to_string())?;
+
+    let total_size = std::fs::metadata(tar_path).map(|m| m.len()).unwrap_or(0);
+
+    // Report start
+    if !label.is_empty() {
+        if let (Some(a), Some(c)) = (app, ch) {
+            report_progress(a, c, DownloadProgress {
+                written: 0,
+                total: Some(total_size),
+                label: label.to_string(),
+                speed: None,
+            });
+        }
+    }
+
+    let output = Command::new("tar")
+        .args(["xzf", &tar_path.to_string_lossy(), "-C", &dest_dir.to_string_lossy()])
+        .output()
+        .map_err(|e| format!("failed to run tar: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("tar extraction failed: {stderr}"));
+    }
+
+    // Report complete
+    if !label.is_empty() {
+        if let (Some(a), Some(c)) = (app, ch) {
+            report_progress(a, c, DownloadProgress {
+                written: total_size,
+                total: Some(total_size),
+                label: label.to_string(),
+                speed: None,
+            });
+        }
+    }
+
+    // Set executable permissions on extracted binaries
+    set_executable_permissions(dest_dir);
+
+    Ok(())
+}
+
+/// Unified archive extraction: dispatches to zip or tar.gz based on file extension.
+fn safe_archive_extract(archive_path: &Path, dest_dir: &Path) -> Result<(), String> {
+    safe_archive_extract_with_progress(archive_path, dest_dir, None, None, "")
+}
+
+/// Unified archive extraction with progress reporting.
+fn safe_archive_extract_with_progress(
+    archive_path: &Path,
+    dest_dir: &Path,
+    app: Option<&AppHandle>,
+    ch: Option<&Channel<DownloadProgress>>,
+    label: &str,
+) -> Result<(), String> {
+    let name = archive_path.to_string_lossy().to_ascii_lowercase();
+    if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
+        #[cfg(not(target_os = "windows"))]
+        {
+            return safe_tar_extract_with_progress(archive_path, dest_dir, app, ch, label);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            return Err("tar.gz extraction is not supported on Windows".to_string());
+        }
+    }
+    safe_zip_extract_with_progress(archive_path, dest_dir, app, ch, label)
+}
+
 /// On Unix systems, set executable permissions on extracted binaries.
 #[cfg(not(target_os = "windows"))]
 fn set_executable_permissions(dir: &Path) {
@@ -690,20 +766,12 @@ fn default_runtime_zip_name(compute_mode: &str, gpu_backend: &str, cuda_version:
     }
     #[cfg(target_os = "macos")]
     {
-        match compute_mode {
-            "gpu" | "hybrid" => {
-                #[cfg(target_arch = "aarch64")]
-                { "llama-b7927-bin-macos-metal-arm64.zip" }
-                #[cfg(not(target_arch = "aarch64"))]
-                { "llama-b7927-bin-macos-cpu-x64.zip" }
-            }
-            _ => {
-                #[cfg(target_arch = "aarch64")]
-                { "llama-b7927-bin-macos-cpu-arm64.zip" }
-                #[cfg(not(target_arch = "aarch64"))]
-                { "llama-b7927-bin-macos-cpu-x64.zip" }
-            }
-        }
+        // macOS builds include Metal support natively, no separate metal/cpu variants
+        let _ = (compute_mode, gpu_backend, cuda_version);
+        #[cfg(target_arch = "aarch64")]
+        { "llama-b7966-bin-macos-arm64.tar.gz" }
+        #[cfg(not(target_arch = "aarch64"))]
+        { "llama-b7966-bin-macos-x64.tar.gz" }
     }
     #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
     {
@@ -754,7 +822,7 @@ pub fn auto_install_cpu_runtime(app: &AppHandle, llm_dir: &Path) {
         ];
         for z in candidates {
             if z.exists() {
-                match safe_zip_extract(&z, &rt) {
+                match safe_archive_extract(&z, &rt) {
                     Ok(_) => {
                         println!("[builtin_llm] Runtime auto-extracted from {}", z.display());
                         return;
@@ -894,7 +962,7 @@ async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode:
             ];
             for z in cudart_candidates {
                 if z.exists() {
-                    let _ = safe_zip_extract_with_progress(&z, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime");
+                    let _ = safe_archive_extract_with_progress(&z, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime");
                     break;
                 }
             }
@@ -904,7 +972,7 @@ async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode:
             if !z.exists() {
                 continue;
             }
-            safe_zip_extract_with_progress(&z, &rt, Some(app), Some(progress_ch), "Extracting LLM runtime")?;
+            safe_archive_extract_with_progress(&z, &rt, Some(app), Some(progress_ch), "Extracting LLM runtime")?;
             if let Some(server) = find_llama_server(&rt) {
                 return Ok(server);
             }
@@ -927,12 +995,12 @@ async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode:
             .unwrap_or(&default_cudart_url);
         let cudart_path = rt.join(cudart_name);
         let _ = download_to_file(app, progress_ch, &[cudart_url], &cudart_path, "Downloading CUDA runtime", cancel).await;
-        let _ = safe_zip_extract_with_progress(&cudart_path, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime");
+        let _ = safe_archive_extract_with_progress(&cudart_path, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime");
         let _ = std::fs::remove_file(&cudart_path);
     }
 
     download_to_file(app, progress_ch, &[runtime_url], &zip_path, "Downloading LLM runtime", cancel).await?;
-    safe_zip_extract_with_progress(&zip_path, &rt, Some(app), Some(progress_ch), "Extracting LLM runtime")?;
+    safe_archive_extract_with_progress(&zip_path, &rt, Some(app), Some(progress_ch), "Extracting LLM runtime")?;
     let _ = std::fs::remove_file(&zip_path);
 
     if let Some(server) = find_llama_server(&rt) {
@@ -2064,7 +2132,7 @@ pub fn builtin_llm_import_runtime(
 
     for p in &paths {
         let zip_path = PathBuf::from(p);
-        safe_zip_extract(&zip_path, &rt)?;
+        safe_archive_extract(&zip_path, &rt)?;
     }
 
     if find_llama_server(&rt).is_some() {
