@@ -2,7 +2,7 @@
 
 # AiReader User Guide / 用户指南
 
-**Version 0.1.0** · PDF · EPUB · Markdown · TXT
+**Version 1.0.0** · PDF · EPUB · Markdown · TXT
 
 [English](#english) | [中文](#中文)
 
@@ -69,15 +69,24 @@
 </tr>
 </table>
 
+### 首次启动引导
+
+首次启动应用时会自动进入引导向导，分三步：
+
+1. **语言选择** — 选择中文或 English
+2. **存储路径** — 设置文档库目录和 AI 模型目录（可使用默认值）
+3. **AI 配置** — 一键配置内置 AI（硬件检测 → 基准测试 → 推荐模型 → 下载 → 启动），也可配置 Ollama 或 OpenAI 兼容 API
+
+引导完成后不会再次弹出。后续可在设置中修改所有配置。
+
 ### 欢迎页
 
-启动应用后默认显示欢迎页，包含：
+引导完成后默认显示欢迎页，包含：
 
-1. **语言切换** — 右上角可切换中文/English
-2. **核心功能介绍** — 选中即译、文法解释、随时对话、笔记沉淀
-3. **快速操作** — 导入文档 / 导入文件夹
-4. **最近文档** — 显示最近打开过的文档，点击直接打开
-5. **底部快捷入口** — 设置、文档库、使用说明
+1. **核心功能介绍** — 选中即译、文法解释、随时对话、笔记沉淀
+2. **快速操作** — 导入文档 / 导入文件夹
+3. **最近文档** — 显示最近打开过的文档，点击直接打开
+4. **底部快捷入口** — 设置、文档库、使用说明
 
 ### 导入文档
 
@@ -168,9 +177,11 @@ PDF 和 EPUB 支持目录侧栏，两种打开方式：
 
 ### 设置
 
-点击顶部栏 ⚙ 按钮打开。分为三个选项卡：
+点击顶部栏 ⚙ 按钮打开。所有设置修改即时生效，无需手动保存。分为三个选项卡：
 
-**通用：** 界面语言、离线词典开关、AI 提示词自定义（可单独重置为默认值）。
+**通用：** 界面语言、离线词典开关、文档库目录、AI 模型目录、AI 提示词自定义（可单独重置为默认值）。
+
+模型目录修改时会提示是否迁移旧目录中的模型文件，若 AI 服务正在运行则会自动停止并提示重新启动。
 
 **AI：** 三种 AI 服务提供方：
 
@@ -207,7 +218,7 @@ PDF 和 EPUB 支持目录侧栏，两种打开方式：
 | Qwen3-8B Q4 | ~5GB | 高质量 |
 | Qwen3-8B Q5 | ~6GB | 最高质量 |
 
-**存储：** 文档缓存管理、应用数据目录、重置应用。
+**存储：** 文档缓存管理、应用数据目录、重置应用（清空所有数据回到初始状态）。
 
 ### 主题切换
 
@@ -247,7 +258,7 @@ NVIDIA (CUDA 12.4/13.1)、AMD/Intel (Vulkan)、CPU 模式（所有电脑可用�
 简易模式下有「降级到更小模型」按钮；或在高级模式中手动选择更小的模型。
 
 **Q: 如何卸载？**
-Windows 设置 → 应用 → 搜索 "Aireader" → 卸载。用户数据存储在 `%APPDATA%/com.aireader.app/`，卸载时不会删除，如需彻底清理请手动删除。
+Windows 设置 → 应用 → 搜索 "Aireader" → 卸载。卸载时可勾选“删除应用数据”清理 `%APPDATA%/com.aireader.app/` 目录。若模型目录配置在外部路径，需手动删除。
 
 **Q: 如何更新？**
 下载新版安装包直接运行即可，自动覆盖旧版本。文档、笔记、模型和设置均会保留。
@@ -313,15 +324,24 @@ Windows 设置 → 应用 → 搜索 "Aireader" → 卸载。用户数据存储�
 </tr>
 </table>
 
+### First-Launch Setup Wizard
+
+On first launch, a setup wizard guides you through three steps:
+
+1. **Language** — Choose Chinese or English
+2. **Storage Paths** — Set document library directory and AI model directory (defaults are fine)
+3. **AI Setup** — One-click built-in AI setup (hardware detection → benchmark → model download → start), or configure Ollama / OpenAI-compatible API
+
+The wizard only appears once. All settings can be changed later.
+
 ### Welcome Page
 
-Shown on startup. Contains:
+Shown after the wizard. Contains:
 
-1. **Language Switch** — Toggle Chinese/English in the top-right corner
-2. **Feature Cards** — Select to translate, grammar explain, chat, notes
-3. **Quick Actions** — Import documents / Import folder
-4. **Recent Documents** — Click to open directly
-5. **Bottom Shortcuts** — Settings, Document Library, Help
+1. **Feature Cards** — Select to translate, grammar explain, chat, notes
+2. **Quick Actions** — Import documents / Import folder
+3. **Recent Documents** — Click to open directly
+4. **Bottom Shortcuts** — Settings, Document Library, Help
 
 ### Importing Documents
 
@@ -412,9 +432,11 @@ Note types: 🟡 AI Generated → 🟢 Confirmed → 🔵 User Note. Supports co
 
 ### Settings
 
-Click the ⚙ button in the header. Three tabs:
+Click the ⚙ button in the header. All settings take effect immediately — no save button needed. Three tabs:
 
-**General:** UI language, offline dictionary toggles, customizable AI prompt templates (individually resettable).
+**General:** UI language, offline dictionary toggles, document library directory, AI model directory, customizable AI prompt templates (individually resettable).
+
+Changing the model directory prompts whether to migrate existing model files. If the AI service is running, it will be stopped automatically and you’ll be prompted to restart.
 
 **AI:** Three providers:
 
@@ -451,7 +473,7 @@ Available models:
 | Qwen3-8B Q4 | ~5GB | High quality |
 | Qwen3-8B Q5 | ~6GB | Highest quality |
 
-**Storage:** Document cache management, app data directory, reset app.
+**Storage:** Document cache management, app data directory, reset app (clears all data including config, documents, models, notes).
 
 ### Theme
 
@@ -491,7 +513,7 @@ Integrated GPUs typically have < 2GB VRAM. GPU acceleration is actually slower t
 In Simple Mode, use the "Downgrade to a smaller model" button; or manually select a smaller model in Advanced Mode.
 
 **Q: How to uninstall?**
-Windows Settings → Apps → search "Aireader" → Uninstall. User data is stored in `%APPDATA%/com.aireader.app/` and is not removed on uninstall. Delete manually if needed.
+Windows Settings → Apps → search "Aireader" → Uninstall. You can check "Delete app data" to clean up `%APPDATA%/com.aireader.app/`. If the model directory is configured outside this path, delete it manually.
 
 **Q: How to update?**
 Download and run the new installer. It will overwrite the previous version automatically. Your documents, notes, models and settings are preserved.

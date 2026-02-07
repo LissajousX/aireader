@@ -14,7 +14,7 @@ interface HelpModalProps {
 
 const GUIDE_ZH = `# AiReader 用户指南
 
-> **版本**: 0.1.0　|　**支持格式**: PDF · EPUB · Markdown · TXT
+> **版本**: 1.0.0　|　**支持格式**: PDF · EPUB · Markdown · TXT
 
 ---
 
@@ -164,11 +164,14 @@ PDF 和 EPUB 文档支持目录侧栏。
 
 ### 通用
 
+所有设置修改即时生效，无需手动保存。
+
 | 设置项 | 说明 |
 |---|---|
 | 界面语言 | 中文 / English |
 | 离线词典 | ECDICT（英→中）、CC-CEDICT（中→英）独立开关 |
-| 文档库位置 | 自定义导入副本的存储路径 |
+| 文档库目录 | 自定义导入副本的存储路径 |
+| 模型存储目录 | AI 模型文件（GGUF）存放位置，修改时可迁移旧文件，运行中的服务会自动停止 |
 
 ### AI
 
@@ -198,7 +201,7 @@ PDF 和 EPUB 文档支持目录侧栏。
 ### 存储
 
 - 文档缓存管理（LRU 策略）
-- 重置应用
+- 重置应用（清空所有数据回到初始状态）
 
 ---
 
@@ -235,7 +238,7 @@ PDF 和 EPUB 文档支持目录侧栏。
 简易模式下点「降级到更小模型」，或在高级模式手动选择更小模型。
 
 **Q: 如何卸载 / 更新？**
-- 卸载：Windows 设置 → 应用 → 搜索 "Aireader" → 卸载。用户数据在 %APPDATA%/com.aireader.app/，需手动删除
+- 卸载：Windows 设置 → 应用 → 搜索 "Aireader" → 卸载。可勾选「删除应用数据」清理。若模型目录在外部路径需手动删除
 - 更新：下载新版安装包直接运行，自动覆盖，数据保留
 
 ---
@@ -245,7 +248,7 @@ PDF 和 EPUB 文档支持目录侧栏。
 
 const GUIDE_EN = `# AiReader User Guide
 
-> **Version**: 0.1.0　|　**Supported Formats**: PDF · EPUB · Markdown · TXT
+> **Version**: 1.0.0　|　**Supported Formats**: PDF · EPUB · Markdown · TXT
 
 ---
 
@@ -395,11 +398,14 @@ Built-in Qwen3 models support **truly disabling** thinking for faster, lighter r
 
 ### General
 
+All settings take effect immediately — no save button needed.
+
 | Setting | Description |
 |---|---|
 | UI Language | Chinese / English |
 | Dictionary | Toggle ECDICT (EN→ZH) and CC-CEDICT (ZH→EN) independently |
 | Library Folder | Custom path for imported copies |
+| Model Storage | AI model files (GGUF) location; migration supported on change, running service auto-stops |
 
 ### AI
 
@@ -429,7 +435,7 @@ Integrated GPUs (Intel UHD/HD/Iris, VRAM<2GB) auto fall back to CPU mode. Too sl
 ### Storage
 
 - Document cache management (LRU policy)
-- Reset app
+- Reset app (clears all data back to initial state)
 
 ---
 
@@ -466,7 +472,7 @@ Integrated GPUs typically have < 2GB VRAM. GPU acceleration is actually slower t
 Use the "Downgrade to a smaller model" button in Simple Mode, or manually select a smaller model in Advanced Mode.
 
 **Q: How to uninstall / update?**
-- Uninstall: Windows Settings → Apps → search "Aireader" → Uninstall. User data in %APPDATA%/com.aireader.app/ must be deleted manually
+- Uninstall: Windows Settings → Apps → search "Aireader" → Uninstall. Check "Delete app data" to clean up. External model directory must be deleted manually
 - Update: Download new installer and run. Automatic overwrite, data preserved
 
 ---

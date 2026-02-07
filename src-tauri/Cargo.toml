@@ -1,6 +1,6 @@
 [package]
 name = "aireader"
-version = "0.1.0"
+version = "1.0.0"
 description = "AI-powered English Reading Assistant"
 authors = ["xujiayu"]
 edition = "2021"

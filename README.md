@@ -57,10 +57,10 @@
 | 🤖 **本地 AI 推理** | 内置 llama.cpp，零配置开箱即用，llama-bench 基准测试精准匹配硬件 |
 | 🌐 **多种 AI 后端** | 也支持 Ollama、OpenAI 兼容 API，自由选择 |
 | 🔤 **选中即翻译** | 直译 / 意译 / 白话解释，复杂长句自动拆解 |
-| 📚 **离线词典** | 内置 ECDICT + CC-CEDICT 词典，中英互译，选词即查，无需联网 |
+| 📚 **离线词典** | 内置 ECDICT + CC-CEDICT，双击即查，中英双向互译，无需联网 |
 | 📝 **智能笔记** | AI 生成候选笔记，人工确认后持久化存储 (SQLite) |
 | 💬 **上下文对话** | 可以就当前阅读内容与 AI 多轮对话，支持深度思考 |
-| 📁 **文档库管理** | 副本导入 / 链接导入，自定义存储目录 |
+| 📁 **文档库管理** | 副本导入 / 链接导入，自定义存储目录，模型目录独立可配 |
 | 🌓 **暗色 / 亮色主题** | 跟随系统或手动切换，文档区域可独立控制 |
 | 🌍 **中英双语界面** | 自动检测系统语言 |
 
@@ -89,7 +89,7 @@ npm run tauri build
 
 ### 使用方式
 
-1. 打开应用 → 设置 → **一键配置内置 AI**（自动检测硬件、基准测试、下载模型）
+1. 首次启动 → 引导向导自动引导（语言 → 存储路径 → **一键配置 AI**）
 2. 打开文档，选中英文文本
 3. AI 面板自动弹出 → 翻译 / 解释 / 对话
 4. 有价值的内容 → 保存为笔记
@@ -139,10 +139,10 @@ Most AI reading tools send your documents to the cloud. Aireader is different:
 | 🤖 **Local AI Inference** | Built-in llama.cpp, zero-config, llama-bench benchmark for precise hardware matching |
 | 🌐 **Multiple AI Backends** | Also supports Ollama, OpenAI-compatible APIs |
 | 🔤 **Select to Translate** | Literal / free / plain-language translation, complex sentence breakdown |
-| 📚 **Offline Dictionary** | Built-in ECDICT + CC-CEDICT dictionaries, bidirectional Chinese-English lookup, no internet needed |
+| 📚 **Offline Dictionary** | Built-in ECDICT + CC-CEDICT, double-click lookup, bidirectional Chinese-English, no internet needed |
 | 📝 **Smart Notes** | AI-generated draft notes, human-confirmed persistent storage (SQLite) |
 | 💬 **Contextual Chat** | Multi-turn conversation about reading content, with deep thinking support |
-| 📁 **Document Library** | Copy or link import, custom storage directory |
+| 📁 **Document Library** | Copy or link import, custom storage directory, independent model directory |
 | 🌓 **Dark / Light Theme** | Follow system or manual toggle, independent document area control |
 | 🌍 **Bilingual UI** | Chinese & English, auto-detected |
 
@@ -171,7 +171,7 @@ npm run tauri build
 
 ### How to Use
 
-1. Open app → Settings → **One-Click AI Setup** (auto-detects hardware, benchmarks, downloads model)
+1. First launch → Setup wizard guides you (language → storage paths → **One-Click AI Setup**)
 2. Open a document, select English text
 3. AI panel appears → Translate / Explain / Chat
 4. Save valuable content as notes
@@ -203,6 +203,7 @@ aireader/
 │   │   ├── notes/              # Notes panel
 │   │   ├── reader/             # PDF / EPUB / TXT / MD readers
 │   │   ├── settings/           # Settings modal
+│   │   ├── setup/              # First-launch setup wizard
 │   │   └── ui/                 # Shared UI & dictionary popup
 │   ├── i18n/                   # Internationalization
 │   ├── services/               # Ollama API & streaming
@@ -210,7 +211,7 @@ aireader/
 │   └── types/                  # TypeScript type definitions
 ├── src-tauri/                  # Rust backend
 │   ├── src/
-│   │   ├── lib.rs              # Tauri commands & file management
+│   │   ├── lib.rs              # Tauri commands & app config
 │   │   ├── builtin_llm.rs      # llama.cpp integration & model management
 │   │   ├── database.rs         # SQLite note storage
 │   │   ├── dictionary.rs       # ECDICT / CC-CEDICT dictionary
@@ -218,7 +219,9 @@ aireader/
 │   │   └── ollama.rs           # Ollama proxy
 │   ├── resources/              # Dictionaries & sample documents
 │   └── Cargo.toml
+├── releases/                  # Release notes
 ├── screenshots/                # Application screenshots
+├── scripts/                    # Build scripts
 ├── USER_GUIDE.md               # User guide (bilingual)
 └── package.json
 ```
