@@ -50,6 +50,7 @@ dependencies = [
 name = "aireader"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "chrono",
  "csv",
  "futures-util",
