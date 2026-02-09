@@ -29,6 +29,10 @@ jobs:
             target: x86_64-apple-darwin
             bundle: dmg
             artifact_pattern: "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg"
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundle: appimage,deb
+            artifact_pattern: "src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/{appimage,deb}/*"
 
     runs-on: ${{ matrix.os }}
 
@@ -56,6 +60,13 @@ jobs:
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: brew install create-dmg
+
+      # Linux: install system dependencies for Tauri
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Install frontend dependencies
         run: npm ci

@@ -32,7 +32,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "dmg"],
+    "targets": ["nsis", "dmg", "appimage", "deb"],
     "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
     "resources": ["resources/"],
     "windows": {

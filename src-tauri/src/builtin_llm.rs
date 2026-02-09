@@ -314,36 +314,39 @@ fn legacy_model_file_name(model_id: &str) -> Option<&'static str> {
 }
 
 fn model_urls(model_id: &str) -> [&'static str; 3] {
+    // Mirror 1: ModelScope (primary, fast in China)
+    // Mirror 2: HuggingFace (international fallback)
+    // Mirror 3: HuggingFace (same, retry)
     match model_id {
         "qwen3_0_6b_q4_k_m" => [
             "https://www.modelscope.cn/models/unsloth/Qwen3-0.6B-GGUF/resolve/master/Qwen3-0.6B-Q4_K_M.gguf",
-            "https://www.modelscope.cn/models/unsloth/Qwen3-0.6B-GGUF/resolve/master/Qwen3-0.6B-Q4_K_M.gguf",
-            "https://www.modelscope.cn/models/unsloth/Qwen3-0.6B-GGUF/resolve/master/Qwen3-0.6B-Q4_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf",
         ],
         "qwen3_1_7b_q4_k_m" => [
             "https://www.modelscope.cn/models/unsloth/Qwen3-1.7B-GGUF/resolve/master/Qwen3-1.7B-Q4_K_M.gguf",
-            "https://www.modelscope.cn/models/unsloth/Qwen3-1.7B-GGUF/resolve/master/Qwen3-1.7B-Q4_K_M.gguf",
-            "https://www.modelscope.cn/models/unsloth/Qwen3-1.7B-GGUF/resolve/master/Qwen3-1.7B-Q4_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf",
         ],
         "qwen3_4b_q4_k_m" => [
             "https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q4_K_M.gguf",
-            "https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q4_K_M.gguf",
-            "https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q4_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
         ],
         "qwen3_4b_q5_k_m" => [
             "https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q5_K_M.gguf",
-            "https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q5_K_M.gguf",
-            "https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q5_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q5_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q5_K_M.gguf",
         ],
         "qwen3_8b_q4_k_m" => [
             "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q4_K_M.gguf",
-            "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q4_K_M.gguf",
-            "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q4_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf",
         ],
         "qwen3_8b_q5_k_m" => [
             "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q5_K_M.gguf",
-            "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q5_K_M.gguf",
-            "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q5_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q5_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q5_K_M.gguf",
         ],
         _ => ["", "", ""],
     }
@@ -778,24 +781,36 @@ fn default_runtime_zip_name(compute_mode: &str, gpu_backend: &str, cuda_version:
         match compute_mode {
             "gpu" | "hybrid" => {
                 if gpu_backend.eq_ignore_ascii_case("cuda") {
-                    "llama-b7927-bin-linux-cuda-12.4-x64.zip"
+                    // Official llamacpp does not provide Linux CUDA binary;
+                    // fall back to Vulkan for GPU acceleration on Linux.
+                    "llama-b7966-bin-ubuntu-vulkan-x64.tar.gz"
                 } else {
-                    "llama-b7927-bin-linux-vulkan-x64.zip"
+                    "llama-b7966-bin-ubuntu-vulkan-x64.tar.gz"
                 }
             }
-            _ => "llama-b7927-bin-linux-cpu-x64.zip",
+            _ => "llama-b7966-bin-ubuntu-x64.tar.gz",
         }
     }
 }
 
-/// Return the default download base URL for runtime zips on the current platform.
-fn default_runtime_base_url() -> &'static str {
+/// Return the default download base URLs for runtime archives on the current platform.
+/// Returns [ModelScope mirror (fast in China), GitHub official release (international fallback)].
+fn default_runtime_base_urls() -> [&'static str; 2] {
     #[cfg(target_os = "macos")]
-    { "https://www.modelscope.cn/datasets/Lissajous/llamacppformacos/resolve/master" }
+    {[
+        "https://www.modelscope.cn/datasets/Lissajous/llamacppformacos/resolve/master",
+        "https://github.com/ggml-org/llama.cpp/releases/download/b7966",
+    ]}
     #[cfg(target_os = "windows")]
-    { "https://www.modelscope.cn/datasets/Lissajous/llamacppforwin64/resolve/master" }
+    {[
+        "https://www.modelscope.cn/datasets/Lissajous/llamacppforwin64/resolve/master",
+        "https://github.com/ggml-org/llama.cpp/releases/download/b7927",
+    ]}
     #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-    { "https://www.modelscope.cn/datasets/Lissajous/llamacppforlinux/resolve/master" }
+    {[
+        "https://www.modelscope.cn/datasets/Lissajous/llamacppforlinux/resolve/master",
+        "https://github.com/ggml-org/llama.cpp/releases/download/b7966",
+    ]}
 }
 
 /// Auto-extract bundled runtime on first launch (called from setup).
@@ -926,15 +941,23 @@ async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode:
 
     let zip_name = default_runtime_zip_name(compute_mode, gpu_backend, cuda_version);
 
-    // CUDA runtime (cudart) is only needed on Windows/Linux with CUDA backend
-    let cudart_name = if (compute_mode == "gpu" || compute_mode == "hybrid") && gpu_backend.eq_ignore_ascii_case("cuda") {
-        if cuda_version == "13.1" {
-            Some("cudart-llama-bin-win-cuda-13.1-x64.zip")
-        } else {
-            Some("cudart-llama-bin-win-cuda-12.4-x64.zip")
+    // CUDA runtime (cudart) is only needed on Windows with CUDA backend.
+    // macOS uses Metal (no CUDA); Linux official builds lack CUDA.
+    let cudart_name: Option<&str> = {
+        #[cfg(target_os = "windows")]
+        {
+            if (compute_mode == "gpu" || compute_mode == "hybrid") && gpu_backend.eq_ignore_ascii_case("cuda") {
+                if cuda_version == "13.1" {
+                    Some("cudart-llama-bin-win-cuda-13.1-x64.zip")
+                } else {
+                    Some("cudart-llama-bin-win-cuda-12.4-x64.zip")
+                }
+            } else {
+                None
+            }
         }
-    } else {
-        None
+        #[cfg(not(target_os = "windows"))]
+        { None }
     };
 
     // Prefer bundled zip runtime if present
@@ -979,27 +1002,31 @@ async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode:
         }
     }
 
-    // Fallback: download runtime zip and extract
-    let default_base = default_runtime_base_url();
-    let default_runtime_url = format!("{}/{}", default_base, zip_name);
-    let runtime_url = custom_runtime_url
-        .filter(|s| !s.is_empty())
-        .unwrap_or(&default_runtime_url);
+    // Fallback: download runtime archive and extract
+    let base_urls = default_runtime_base_urls();
+    let default_runtime_urls: Vec<String> = base_urls.iter().map(|b| format!("{}/{}", b, zip_name)).collect();
 
     let zip_path = rt.join(zip_name);
 
     if let Some(cudart_name) = cudart_name {
-        let default_cudart_url = format!("{}/{}", default_base, cudart_name);
-        let cudart_url = custom_cudart_url
-            .filter(|s| !s.is_empty())
-            .unwrap_or(&default_cudart_url);
+        let cudart_urls: Vec<String> = base_urls.iter().map(|b| format!("{}/{}", b, cudart_name)).collect();
+        let cudart_url_refs: Vec<&str> = if let Some(custom) = custom_cudart_url.filter(|s| !s.is_empty()) {
+            vec![custom]
+        } else {
+            cudart_urls.iter().map(|s| s.as_str()).collect()
+        };
         let cudart_path = rt.join(cudart_name);
-        let _ = download_to_file(app, progress_ch, &[cudart_url], &cudart_path, "Downloading CUDA runtime", cancel).await;
+        let _ = download_to_file(app, progress_ch, &cudart_url_refs, &cudart_path, "Downloading CUDA runtime", cancel).await;
         let _ = safe_archive_extract_with_progress(&cudart_path, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime");
         let _ = std::fs::remove_file(&cudart_path);
     }
 
-    download_to_file(app, progress_ch, &[runtime_url], &zip_path, "Downloading LLM runtime", cancel).await?;
+    let runtime_url_refs: Vec<&str> = if let Some(custom) = custom_runtime_url.filter(|s| !s.is_empty()) {
+        vec![custom]
+    } else {
+        default_runtime_urls.iter().map(|s| s.as_str()).collect()
+    };
+    download_to_file(app, progress_ch, &runtime_url_refs, &zip_path, "Downloading LLM runtime", cancel).await?;
     safe_archive_extract_with_progress(&zip_path, &rt, Some(app), Some(progress_ch), "Extracting LLM runtime")?;
     let _ = std::fs::remove_file(&zip_path);
 
