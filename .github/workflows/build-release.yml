@@ -21,20 +21,22 @@ jobs:
             target: x86_64-pc-windows-msvc
             bundle: nsis
             artifact_pattern: "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe"
-          # macOS ARM — use macos-latest (Apple Silicon runner) for native build
+          # macOS ARM (native build on Apple Silicon runner)
           - os: macos-latest
             target: aarch64-apple-darwin
             bundle: dmg
             artifact_pattern: "src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg"
-          # macOS x86_64 — use macos-13 (Intel runner) to avoid cross-compile signing issues
-          - os: macos-13
+          # macOS x86_64 (cross-compile on ARM runner — macos-13 Intel retired)
+          - os: macos-latest
             target: x86_64-apple-darwin
             bundle: dmg
             artifact_pattern: "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg"
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            bundle: appimage,deb
-            artifact_pattern: "src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/{appimage,deb}/*"
+            bundle: "appimage,deb"
+            artifact_pattern: |
+              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
 
     runs-on: ${{ matrix.os }}
 

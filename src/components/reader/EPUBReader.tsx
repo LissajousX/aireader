@@ -331,15 +331,26 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
         }
       }
 
-      if (!rawUrl.includes('asset.localhost')) return rawUrl;
+      // Handle both Windows (https://asset.localhost/) and macOS/Linux (asset://localhost/) formats
+      if (!rawUrl.includes('asset.localhost') && !rawUrl.startsWith('asset://')) return rawUrl;
 
       try {
         const u = new URL(rawUrl);
-        if (u.hostname !== 'asset.localhost') return rawUrl;
+        const isAssetUrl = u.hostname === 'asset.localhost' || (u.protocol === 'asset:' && u.hostname === 'localhost');
+        if (!isAssetUrl) return rawUrl;
         if (u.pathname.includes('epub_extracted')) return rawUrl;
         if (/^\/[a-zA-Z]%3A(%5C|\/)/i.test(u.pathname)) return rawUrl;
 
-        const relPath = u.pathname.replace(/^\/+/, '');
+        // On macOS, convertFileSrc encodes the entire path, so %2F appears instead of /
+        // Decode the pathname to get the actual relative path
+        let relPath = u.pathname.replace(/^\/+/, '');
+        try {
+          relPath = decodeURIComponent(relPath).replace(/^\/+/, '');
+        } catch {}
+        // If the decoded path is absolute (starts with / or drive letter), it's already a full path from convertFileSrc
+        // — this means the URL is valid and points to the right file
+        if (relPath.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(relPath)) return rawUrl;
+
         const rewritten = rewriteRelToAssetUrl(relPath, u.search, u.hash);
         if (rewritten) return rewritten;
         return rawUrl;
