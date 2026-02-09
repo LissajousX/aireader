@@ -1,4 +1,5 @@
 use futures_util::StreamExt;
+#[cfg(not(target_os = "macos"))]
 use libloading::Library;
 use serde::{Deserialize, Serialize};
 use std::net::{TcpListener, TcpStream};

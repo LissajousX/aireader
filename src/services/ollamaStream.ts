@@ -13,13 +13,24 @@ interface ChatMessage {
   content: string;
 }
 
+export type ThinkingLevel = 'none' | 'weak' | 'medium' | 'strong';
+
 interface StreamOptions {
   enableThinking?: boolean;
+  thinkingLevel?: ThinkingLevel;
   signal?: AbortSignal;
   messages?: ChatMessage[];
 }
 
-function resolveThinkingMode(prompt: string, defaultThinking: boolean): { thinking: boolean; promptToSend: string } {
+const THINKING_BUDGET_TOKENS: Record<ThinkingLevel, number> = {
+  none: 0,
+  weak: 1024,
+  medium: 4096,
+  strong: 16384,
+};
+
+function resolveThinkingMode(prompt: string, defaultThinking: boolean, level?: ThinkingLevel): { thinking: boolean; promptToSend: string; budgetTokens: number } {
+  const effectiveLevel = level ?? (defaultThinking ? 'medium' : 'none');
   const re = /\/(think|no_think)\b/g;
   let last: "think" | "no_think" | null = null;
   let m: RegExpExecArray | null;
@@ -28,15 +39,15 @@ function resolveThinkingMode(prompt: string, defaultThinking: boolean): { thinki
   }
 
   if (last === "think") {
-    return { thinking: true, promptToSend: prompt };
+    return { thinking: true, promptToSend: prompt, budgetTokens: THINKING_BUDGET_TOKENS[effectiveLevel] || 4096 };
   }
   if (last === "no_think") {
-    return { thinking: false, promptToSend: prompt };
+    return { thinking: false, promptToSend: prompt, budgetTokens: 0 };
   }
-  if (!defaultThinking) {
-    return { thinking: false, promptToSend: `${prompt} /no_think` };
+  if (effectiveLevel === 'none') {
+    return { thinking: false, promptToSend: `${prompt} /no_think`, budgetTokens: 0 };
   }
-  return { thinking: true, promptToSend: prompt };
+  return { thinking: true, promptToSend: prompt, budgetTokens: THINKING_BUDGET_TOKENS[effectiveLevel] };
 }
 
 export async function streamGenerate(
@@ -48,7 +59,8 @@ export async function streamGenerate(
     const settings = useSettingsStore.getState();
     const provider = settings.llmProvider;
     const enableThinking = options?.enableThinking ?? settings.enableThinking;
-    const thinkingResolved = resolveThinkingMode(prompt, enableThinking);
+    const thinkingLevel = options?.thinkingLevel;
+    const thinkingResolved = resolveThinkingMode(prompt, enableThinking, thinkingLevel);
 
     let response!: Response;
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
@@ -83,6 +95,7 @@ export async function streamGenerate(
         messages: builtinMessages,
         stream: true,
         enable_thinking: builtinThinking,
+        ...(builtinThinking && thinkingResolved.budgetTokens > 0 ? { thinking_budget: thinkingResolved.budgetTokens } : {}),
       });
       const maxRetries = 6;
       for (let attempt = 0; attempt <= maxRetries; attempt++) {

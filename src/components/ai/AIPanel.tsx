@@ -9,7 +9,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { cn } from "@/lib/utils";
 import { TRANSLATION_MODES } from "@/types";
 import type { TranslationMode, Note } from "@/types";
-import { streamGenerate, buildTranslatePrompt, buildExplainPrompt } from "@/services/ollamaStream";
+import { streamGenerate, buildTranslatePrompt, buildExplainPrompt, type ThinkingLevel } from "@/services/ollamaStream";
 import { fetchOllamaModels, formatModelSize, type OllamaModel } from "@/services/ollamaApi";
 import { invoke, Channel } from "@tauri-apps/api/core";
 
@@ -57,7 +57,16 @@ export function AIPanel({ style }: AIPanelProps) {
     localStorage.setItem('aireader_ai_active_tab', tab);
   };
   const [translationMode, setTranslationMode] = useState<TranslationMode["type"]>("free");
-  const [useDeepThinking, setUseDeepThinking] = useState(true);
+  const [thinkingLevel, setThinkingLevelRaw] = useState<ThinkingLevel>(() => {
+    const saved = localStorage.getItem('aireader_thinking_level');
+    if (saved === 'none' || saved === 'weak' || saved === 'medium' || saved === 'strong') return saved;
+    return 'medium';
+  });
+  const setThinkingLevel = (level: ThinkingLevel) => {
+    setThinkingLevelRaw(level);
+    localStorage.setItem('aireader_thinking_level', level);
+  };
+  const thinkingEnabled = thinkingLevel !== 'none';
   const [inputText, setInputText] = useState("");
 
   // T4: Locked chat context — when user enters chat tab with selected text, lock it as context
@@ -299,7 +308,7 @@ export function AIPanel({ style }: AIPanelProps) {
 
     setSavedByContext((prev) => ({ ...prev, [key]: false }));
     setLastSavedContentByContext((prev) => ({ ...prev, [key]: null }));
-    if (useDeepThinking) {
+    if (thinkingEnabled) {
       setShowThinkingByContext((prev) => ({ ...prev, [key]: true }));
     }
 
@@ -311,7 +320,7 @@ export function AIPanel({ style }: AIPanelProps) {
     let thinkingDone = false;
     await streamGenerate(prompt, {
       onThinking: (t) => { 
-        if (useDeepThinking) {
+        if (thinkingEnabled) {
           setThinking(key, taskId, t); 
           finalThinking = t; 
         }
@@ -319,7 +328,7 @@ export function AIPanel({ style }: AIPanelProps) {
       onContent: (content) => {
         setStreamingContent(key, taskId, content);
         finalContent = content;
-        if (useDeepThinking && !thinkingDone && finalThinking) {
+        if (thinkingEnabled && !thinkingDone && finalThinking) {
           thinkingDone = true;
           setShowThinkingByContext((prev) => ({ ...prev, [key]: false }));
         }
@@ -332,7 +341,7 @@ export function AIPanel({ style }: AIPanelProps) {
         finishTask(key, taskId, finalContent, finalThinking, textToProcess);
       },
       onError: (error) => setError(key, taskId, error),
-    }, { enableThinking: useDeepThinking, signal });
+    }, { enableThinking: thinkingEnabled, thinkingLevel, signal });
   };
 
   // 对话功能 - ChatGPT风格
@@ -457,7 +466,7 @@ export function AIPanel({ style }: AIPanelProps) {
     let finalThinking = "";
     await streamGenerate(prompt, {
       onThinking: (t) => { 
-        if (useDeepThinking) {
+        if (thinkingEnabled) {
           setThinking(key, taskId, t); 
           finalThinking = t; 
         }
@@ -465,7 +474,7 @@ export function AIPanel({ style }: AIPanelProps) {
       onContent: (content) => {
         setStreamingContent(key, taskId, content);
         finalContent = content;
-        if (useDeepThinking && !thinkingDone && finalThinking) {
+        if (thinkingEnabled && !thinkingDone && finalThinking) {
           thinkingDone = true;
         }
       },
@@ -482,7 +491,7 @@ export function AIPanel({ style }: AIPanelProps) {
         finishTask(key, taskId, finalContent, finalThinking, textToProcess);
       },
       onError: (error) => setError(key, taskId, error),
-    }, { enableThinking: useDeepThinking, signal, messages });
+    }, { enableThinking: thinkingEnabled, thinkingLevel, signal, messages });
   };
 
   const handleExplain = async () => {
@@ -503,7 +512,7 @@ export function AIPanel({ style }: AIPanelProps) {
 
     setSavedByContext((prev) => ({ ...prev, [key]: false }));
     setLastSavedContentByContext((prev) => ({ ...prev, [key]: null }));
-    if (useDeepThinking) {
+    if (thinkingEnabled) {
       setShowThinkingByContext((prev) => ({ ...prev, [key]: true }));
     }
 
@@ -515,7 +524,7 @@ export function AIPanel({ style }: AIPanelProps) {
     let thinkingDone = false;
     await streamGenerate(prompt, {
       onThinking: (t) => { 
-        if (useDeepThinking) {
+        if (thinkingEnabled) {
           setThinking(key, taskId, t); 
           finalThinking = t; 
         }
@@ -523,7 +532,7 @@ export function AIPanel({ style }: AIPanelProps) {
       onContent: (content) => {
         setStreamingContent(key, taskId, content);
         finalContent = content;
-        if (useDeepThinking && !thinkingDone && finalThinking) {
+        if (thinkingEnabled && !thinkingDone && finalThinking) {
           thinkingDone = true;
           setShowThinkingByContext((prev) => ({ ...prev, [key]: false }));
         }
@@ -535,7 +544,7 @@ export function AIPanel({ style }: AIPanelProps) {
         finishTask(key, taskId, finalContent, finalThinking, textToProcess);
       },
       onError: (error) => setError(key, taskId, error),
-    }, { enableThinking: useDeepThinking, signal });
+    }, { enableThinking: thinkingEnabled, thinkingLevel, signal });
   };
 
   const handleRegenerate = () => {
@@ -1112,18 +1121,34 @@ export function AIPanel({ style }: AIPanelProps) {
             
             {/* 输入区域 */}
             <div className="border-t border-border/60 pt-2 space-y-2">
-              {/* 深度思考和清空按钮 - 在输入框上方 */}
+              {/* 思考强度和清空按钮 - 在输入框上方 */}
               <div className="flex justify-between items-center">
-                <button
-                  onClick={() => setUseDeepThinking(!useDeepThinking)}
-                  className={cn(
-                    "flex items-center gap-1 px-2 py-1 rounded text-xs transition-all",
-                    useDeepThinking ? "bg-amber-500/20 text-amber-600" : "bg-muted text-muted-foreground"
-                  )}
-                >
-                  <Brain className="w-3 h-3" />
-                  {t('深度思考', 'Deep Think')}
-                </button>
+                <div className="flex items-center gap-1">
+                  <Brain className={cn("w-3 h-3", thinkingEnabled ? "text-amber-500" : "text-muted-foreground")} />
+                  <div className="flex rounded-md overflow-hidden border border-border/60">
+                    {([
+                      { level: 'none' as ThinkingLevel, label: t('无', 'Off') },
+                      { level: 'weak' as ThinkingLevel, label: t('弱', 'Low') },
+                      { level: 'medium' as ThinkingLevel, label: t('中', 'Mid') },
+                      { level: 'strong' as ThinkingLevel, label: t('强', 'Max') },
+                    ]).map(({ level, label }) => (
+                      <button
+                        key={level}
+                        onClick={() => setThinkingLevel(level)}
+                        className={cn(
+                          "px-1.5 py-0.5 text-[10px] transition-all",
+                          thinkingLevel === level
+                            ? level === 'none'
+                              ? "bg-muted text-foreground font-medium"
+                              : "bg-amber-500/20 text-amber-600 dark:text-amber-400 font-medium"
+                            : "text-muted-foreground hover:bg-muted/60"
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <button
                   onClick={clearChat}
                   className="flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -1219,21 +1244,34 @@ export function AIPanel({ style }: AIPanelProps) {
               </div>
             )}
 
-            {/* 深度思考开关 + 开始按钮同行 */}
+            {/* 思考强度 + 开始按钮同行 */}
             <div className="flex gap-2">
-              <button
-                onClick={() => setUseDeepThinking(!useDeepThinking)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-2 rounded-md text-sm transition-all",
-                  useDeepThinking 
-                    ? "bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30" 
-                    : "bg-muted text-muted-foreground border border-transparent"
-                )}
-                title={useDeepThinking ? t('深度思考已开启', 'Deep thinking enabled') : t('深度思考已关闭', 'Deep thinking disabled')}
-              >
-                <Brain className={cn("w-4 h-4", useDeepThinking && "text-amber-500")} />
-                <span className="text-xs">{t('思考', 'Think')}</span>
-              </button>
+              <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md border border-border/60">
+                <Brain className={cn("w-3.5 h-3.5", thinkingEnabled ? "text-amber-500" : "text-muted-foreground")} />
+                <div className="flex rounded-md overflow-hidden border border-border/60">
+                  {([
+                    { level: 'none' as ThinkingLevel, label: t('无', 'Off') },
+                    { level: 'weak' as ThinkingLevel, label: t('弱', 'Low') },
+                    { level: 'medium' as ThinkingLevel, label: t('中', 'Mid') },
+                    { level: 'strong' as ThinkingLevel, label: t('强', 'Max') },
+                  ]).map(({ level, label }) => (
+                    <button
+                      key={level}
+                      onClick={() => setThinkingLevel(level)}
+                      className={cn(
+                        "px-1.5 py-0.5 text-[10px] transition-all",
+                        thinkingLevel === level
+                          ? level === 'none'
+                            ? "bg-muted text-foreground font-medium"
+                            : "bg-amber-500/20 text-amber-600 dark:text-amber-400 font-medium"
+                          : "text-muted-foreground hover:bg-muted/60"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {activeContext?.isLoading ? (
                 <Button
                   onClick={() => activeContextKey && clearContext(activeContextKey)}
