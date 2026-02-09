@@ -69,21 +69,23 @@ pub async fn ollama_stream_chat(
     model: String,
     prompt: Option<String>,
     messages: Option<serde_json::Value>,
+    think: Option<bool>,
     on_chunk: Channel<OllamaStreamChunk>,
 ) -> Result<(), String> {
     use futures_util::StreamExt;
 
     let base = base_url.trim_end_matches('/');
+    let think_val = think.unwrap_or(false);
     let (url, body) = if let Some(msgs) = messages {
         (
             format!("{}/api/chat", base),
-            serde_json::json!({ "model": model, "messages": msgs, "stream": true }),
+            serde_json::json!({ "model": model, "messages": msgs, "stream": true, "think": think_val }),
         )
     } else {
         let p = prompt.unwrap_or_default();
         (
             format!("{}/api/generate", base),
-            serde_json::json!({ "model": model, "prompt": p, "stream": true }),
+            serde_json::json!({ "model": model, "prompt": p, "stream": true, "think": think_val }),
         )
     };
 

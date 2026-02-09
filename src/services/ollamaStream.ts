@@ -355,6 +355,7 @@ export async function streamGenerate(
       model: modelName,
       prompt: useChat ? null : finalPrompt,
       messages: useChat ? options!.messages : null,
+      think: thinkingResolved.thinking,
       onChunk,
     });
 
