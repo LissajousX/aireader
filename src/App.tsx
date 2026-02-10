@@ -550,7 +550,7 @@ function App() {
         {currentDocument && (
           <div className="flex items-center justify-between px-2 py-1 border-b border-border/40 bg-background/80 backdrop-blur-sm z-10 flex-shrink-0">
             <div className="flex items-center gap-1 min-w-0">
-              <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0" onClick={toggleSidebar}>
+              <Button variant="outline" size="sm" className="h-7 px-2 flex-shrink-0 gap-1 border-border/60" onClick={toggleSidebar} title={sidebarOpen ? t('sidebar.hide') : t('sidebar.show')}>
                 <Menu className="w-4 h-4" />
               </Button>
               <span className="text-xs text-muted-foreground truncate max-w-[300px]" title={currentDocument.title}>

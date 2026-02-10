@@ -46,7 +46,7 @@ export const useDocumentStore = create<DocumentState>()(
       currentDocument: null,
       currentPage: 1,
       selectedText: null,
-      sidebarOpen: false,
+      sidebarOpen: true,
       aiPanelOpen: false,
       sidebarWidth: 256,
       aiPanelWidth: 400,

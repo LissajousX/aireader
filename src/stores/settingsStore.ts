@@ -160,7 +160,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   builtinGpuBackend: (() => {
     const raw = localStorage.getItem('builtin_gpu_backend');
     if (raw === 'cuda') return 'cuda';
-    return 'vulkan';
+    if (raw === 'metal') return 'metal';
+    if (raw === 'vulkan') return 'vulkan';
+    // Auto-detect: use Metal on macOS, Vulkan on others
+    const isMac = navigator.userAgent.includes('Macintosh') || navigator.platform?.startsWith('Mac');
+    return isMac ? 'metal' : 'vulkan';
   })(),
   builtinGpuLayers: (() => {
     const raw = localStorage.getItem('builtin_gpu_layers');

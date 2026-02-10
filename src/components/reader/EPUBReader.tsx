@@ -1303,6 +1303,80 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
               };
 
               doc.addEventListener('wheel', onWheel, { passive: false });
+
+              // macOS WKWebView fallback: epubjs "selected" event may not fire inside iframes.
+              // Add a direct mouseup listener with delay to ensure selection is finalized.
+              const onMouseUp = () => {
+                setTimeout(() => {
+                  try {
+                    // Try multiple ways to get the selection — WKWebView may differ
+                    const sel = doc.getSelection?.()
+                      || doc.defaultView?.getSelection?.()
+                      || (contents?.window as Window | undefined)?.getSelection?.();
+                    if (!sel || sel.rangeCount === 0 || !sel.toString().trim()) return;
+                    const text = sel.toString().trim();
+                    const range = sel.getRangeAt(0);
+                    const rect = range.getBoundingClientRect();
+                    let x = rect.x;
+                    let y = rect.y;
+                    try {
+                      const frameEl = (contents?.window as Window | undefined)?.frameElement as HTMLElement | null
+                        || doc.defaultView?.frameElement as HTMLElement | null;
+                      if (frameEl && typeof frameEl.getBoundingClientRect === 'function') {
+                        const fr = frameEl.getBoundingClientRect();
+                        x = (Number.isFinite(x) ? x : 0) + fr.left;
+                        y = (Number.isFinite(y) ? y : 0) + fr.top;
+                      }
+                    } catch {}
+                    onTextSelectRef.current({
+                      text,
+                      pageNumber: 0,
+                      position: { x, y, width: rect.width, height: rect.height },
+                    });
+                  } catch {}
+                }, 20);
+              };
+              doc.addEventListener('mouseup', onMouseUp);
+
+              // macOS WKWebView fallback for dblclick word lookup:
+              // The spine hook's doc may be a temporary object replaced when injected into iframe.
+              // Re-register dblclick on the live iframe doc from the rendition content hook.
+              if (!(doc as any).__aireader_dblclick_rendition) {
+                (doc as any).__aireader_dblclick_rendition = true;
+                doc.addEventListener('dblclick', (e: Event) => {
+                  try {
+                    const me = e as MouseEvent;
+                    const clientX = me.clientX;
+                    const clientY = me.clientY;
+
+                    // Get selected word from selection or caret position
+                    const sel = doc.getSelection?.()
+                      || doc.defaultView?.getSelection?.()
+                      || (contents?.window as Window | undefined)?.getSelection?.();
+                    const selected = sel && typeof sel.toString === 'function' ? sel.toString().trim() : '';
+                    
+                    // If there's a clean single word/token from selection, use it
+                    const word = selected && !/[\s\u00A0]/.test(selected) ? selected : '';
+                    if (!word) return;
+
+                    let x = clientX;
+                    let y = clientY;
+                    try {
+                      const frameEl = (contents?.window as Window | undefined)?.frameElement as HTMLElement | null
+                        || doc.defaultView?.frameElement as HTMLElement | null;
+                      if (frameEl && typeof frameEl.getBoundingClientRect === 'function') {
+                        const fr = frameEl.getBoundingClientRect();
+                        x = (Number.isFinite(x) ? x : 0) + fr.left;
+                        y = (Number.isFinite(y) ? y : 0) + fr.top;
+                      }
+                    } catch {}
+
+                    window.dispatchEvent(
+                      new CustomEvent('aireader-iframe-dblclick', { detail: { word, x, y } })
+                    );
+                  } catch {}
+                });
+              }
             } catch {
               // ignore
             }

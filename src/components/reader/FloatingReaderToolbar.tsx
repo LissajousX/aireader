@@ -76,7 +76,7 @@ export function FloatingReaderToolbar({
   containerClassName,
 }: FloatingReaderToolbarProps) {
   const { b } = useI18n();
-  const [pinned, setPinned] = useState(false);
+  const [pinned, setPinned] = useState(true);
   const [visible, setVisible] = useState(true);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -166,7 +166,7 @@ export function FloatingReaderToolbar({
           <div className="w-6 h-0.5 rounded-full bg-muted-foreground/40" />
         </button>
       ) : (
-      <div className="pointer-events-auto flex items-center gap-0.5 px-1.5 py-1 rounded-full bg-background/70 border border-border/60 shadow-lg backdrop-blur-xl">
+      <div className="pointer-events-auto flex items-center gap-0.5 px-1.5 py-1 rounded-full bg-background/90 border border-border/80 shadow-lg backdrop-blur-xl">
         {hasToc && onToggleToc && (
           <>
             <button

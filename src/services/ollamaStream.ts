@@ -13,24 +13,13 @@ interface ChatMessage {
   content: string;
 }
 
-export type ThinkingLevel = 'none' | 'weak' | 'medium' | 'strong';
-
 interface StreamOptions {
   enableThinking?: boolean;
-  thinkingLevel?: ThinkingLevel;
   signal?: AbortSignal;
   messages?: ChatMessage[];
 }
 
-const THINKING_BUDGET_TOKENS: Record<ThinkingLevel, number> = {
-  none: 0,
-  weak: 1024,
-  medium: 4096,
-  strong: 16384,
-};
-
-function resolveThinkingMode(prompt: string, defaultThinking: boolean, level?: ThinkingLevel): { thinking: boolean; promptToSend: string; budgetTokens: number } {
-  const effectiveLevel = level ?? (defaultThinking ? 'medium' : 'none');
+function resolveThinkingMode(prompt: string, defaultThinking: boolean): { thinking: boolean; promptToSend: string } {
   const re = /\/(think|no_think)\b/g;
   let last: "think" | "no_think" | null = null;
   let m: RegExpExecArray | null;
@@ -39,15 +28,15 @@ function resolveThinkingMode(prompt: string, defaultThinking: boolean, level?: T
   }
 
   if (last === "think") {
-    return { thinking: true, promptToSend: prompt, budgetTokens: THINKING_BUDGET_TOKENS[effectiveLevel] || 4096 };
+    return { thinking: true, promptToSend: prompt };
   }
   if (last === "no_think") {
-    return { thinking: false, promptToSend: prompt, budgetTokens: 0 };
+    return { thinking: false, promptToSend: prompt };
   }
-  if (effectiveLevel === 'none') {
-    return { thinking: false, promptToSend: `${prompt} /no_think`, budgetTokens: 0 };
+  if (!defaultThinking) {
+    return { thinking: false, promptToSend: `${prompt} /no_think` };
   }
-  return { thinking: true, promptToSend: prompt, budgetTokens: THINKING_BUDGET_TOKENS[effectiveLevel] };
+  return { thinking: true, promptToSend: prompt };
 }
 
 export async function streamGenerate(
@@ -59,8 +48,7 @@ export async function streamGenerate(
     const settings = useSettingsStore.getState();
     const provider = settings.llmProvider;
     const enableThinking = options?.enableThinking ?? settings.enableThinking;
-    const thinkingLevel = options?.thinkingLevel;
-    const thinkingResolved = resolveThinkingMode(prompt, enableThinking, thinkingLevel);
+    const thinkingResolved = resolveThinkingMode(prompt, enableThinking);
 
     let response!: Response;
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
@@ -95,7 +83,6 @@ export async function streamGenerate(
         messages: builtinMessages,
         stream: true,
         enable_thinking: builtinThinking,
-        ...(builtinThinking && thinkingResolved.budgetTokens > 0 ? { thinking_budget: thinkingResolved.budgetTokens } : {}),
       });
       const maxRetries = 6;
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -343,7 +330,29 @@ export async function streamGenerate(
       if (msg.kind === 'thinking') {
         if (thinkingResolved.thinking) callbacks.onThinking?.(msg.text);
       } else if (msg.kind === 'content') {
-        callbacks.onContent?.(msg.text);
+        // Ollama models (e.g. qwen3) may embed <think>...</think> in content
+        // even when think:false. Parse and strip/route these blocks.
+        const raw = msg.text; // accumulated content
+        const thinkStart = raw.indexOf('<think>');
+        if (thinkStart < 0) {
+          // No think block — pass through
+          callbacks.onContent?.(raw);
+        } else {
+          const thinkEnd = raw.indexOf('</think>');
+          if (thinkEnd >= 0) {
+            // Complete think block found
+            if (thinkingResolved.thinking) {
+              callbacks.onThinking?.(raw.substring(thinkStart + 7, thinkEnd));
+            }
+            const mainContent = (raw.substring(0, thinkStart) + raw.substring(thinkEnd + 8)).trimStart();
+            if (mainContent) callbacks.onContent?.(mainContent);
+          } else {
+            // Incomplete think block — still thinking, don't emit content yet
+            if (thinkingResolved.thinking) {
+              callbacks.onThinking?.(raw.substring(thinkStart + 7));
+            }
+          }
+        }
       } else if (msg.kind === 'done' && !doneCalled) {
         doneCalled = true;
         callbacks.onDone?.();

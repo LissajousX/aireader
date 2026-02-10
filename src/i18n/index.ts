@@ -75,6 +75,8 @@ const ZH: MessageDict = {
   "sidebar.copy_badge_title": "已导入副本到文档库",
   "sidebar.link_badge": "链接",
   "sidebar.link_badge_title": "直接打开的原始文件",
+  "sidebar.hide": "收起侧边栏",
+  "sidebar.show": "展开侧边栏",
 
   "library.title": "文档库",
   "library.count": "({count} 个文档)",
@@ -183,6 +185,8 @@ const EN: MessageDict = {
   "sidebar.copy_badge_title": "Imported copy in documents library",
   "sidebar.link_badge": "Link",
   "sidebar.link_badge_title": "Opened from original location",
+  "sidebar.hide": "Hide sidebar",
+  "sidebar.show": "Show sidebar",
 
   "library.title": "Library",
   "library.count": "({count} documents)",

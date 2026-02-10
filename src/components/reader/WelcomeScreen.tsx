@@ -110,7 +110,7 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
             <button
               type="button"
               onClick={onOpenFile}
-              className="rounded-2xl border border-border/60 bg-card/55 hover:bg-card/70 backdrop-blur-xl shadow-sm hover:shadow-md hover:border-primary/30 transition-all p-5 text-left active:translate-y-[1px]"
+              className="rounded-2xl border border-border/60 bg-card hover:bg-card/90 backdrop-blur-xl shadow-sm hover:shadow-md hover:border-primary/30 transition-all p-5 text-left active:translate-y-[1px]"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -126,7 +126,7 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
             <button
               type="button"
               onClick={onImportFolder}
-              className="rounded-2xl border border-border/60 bg-card/55 hover:bg-card/70 backdrop-blur-xl shadow-sm hover:shadow-md hover:border-primary/30 transition-all p-5 text-left active:translate-y-[1px]"
+              className="rounded-2xl border border-border/60 bg-card hover:bg-card/90 backdrop-blur-xl shadow-sm hover:shadow-md hover:border-primary/30 transition-all p-5 text-left active:translate-y-[1px]"
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -157,7 +157,7 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
 
           {/* Feature cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="group rounded-xl border border-border/60 bg-background/35 hover:bg-background/50 backdrop-blur shadow-sm hover:shadow-md hover:border-border/80 transition-all p-4">
+            <div className="group rounded-xl border border-border/60 bg-card/80 hover:bg-card backdrop-blur shadow-sm hover:shadow-md hover:border-border/80 transition-all p-4">
               <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors mb-2.5">
                 <Sparkles className="w-4.5 h-4.5 text-primary" />
               </div>
@@ -165,7 +165,7 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
               <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{t("welcome.feature.select_translate.desc")}</div>
             </div>
 
-            <div className="group rounded-xl border border-border/60 bg-background/35 hover:bg-background/50 backdrop-blur shadow-sm hover:shadow-md hover:border-border/80 transition-all p-4">
+            <div className="group rounded-xl border border-border/60 bg-card/80 hover:bg-card backdrop-blur shadow-sm hover:shadow-md hover:border-border/80 transition-all p-4">
               <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors mb-2.5">
                 <Languages className="w-4.5 h-4.5 text-primary" />
               </div>
@@ -173,7 +173,7 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
               <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{t("welcome.feature.grammar.desc")}</div>
             </div>
 
-            <div className="group rounded-xl border border-border/60 bg-background/35 hover:bg-background/50 backdrop-blur shadow-sm hover:shadow-md hover:border-border/80 transition-all p-4">
+            <div className="group rounded-xl border border-border/60 bg-card/80 hover:bg-card backdrop-blur shadow-sm hover:shadow-md hover:border-border/80 transition-all p-4">
               <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors mb-2.5">
                 <MessageSquareText className="w-4.5 h-4.5 text-primary" />
               </div>
@@ -181,7 +181,7 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
               <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{t("welcome.feature.chat.desc")}</div>
             </div>
 
-            <div className="group rounded-xl border border-border/60 bg-background/35 hover:bg-background/50 backdrop-blur shadow-sm hover:shadow-md hover:border-border/80 transition-all p-4">
+            <div className="group rounded-xl border border-border/60 bg-card/80 hover:bg-card backdrop-blur shadow-sm hover:shadow-md hover:border-border/80 transition-all p-4">
               <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors mb-2.5">
                 <StickyNote className="w-4.5 h-4.5 text-primary" />
               </div>
