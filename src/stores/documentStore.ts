@@ -37,6 +37,7 @@ interface DocumentState {
   updateDocumentProgress: (docId: string, page: number, progress: number) => void;
   setDocumentTotalPages: (docId: string, totalPages: number) => void;
   setLastPosition: (docId: string, position: string) => void;
+  flushRecentOrder: () => void;
 }
 
 export const useDocumentStore = create<DocumentState>()(
@@ -58,17 +59,26 @@ export const useDocumentStore = create<DocumentState>()(
 
       setDocuments: (documents) => set({ documents }),
       setCurrentDocument: (document) =>
-        set((state) => ({
+        set({
           currentDocument: document,
           currentPage: document?.currentPage || 1,
           aiPanelOpen: document ? true : false,
-          documents: document
-            ? state.documents.map(d => d.id === document.id ? { ...d, updatedAt: new Date().toISOString() } : d)
-            : state.documents,
-        })),
+          _pendingRecentDocId: document ? document.id : null,
+        } as any),
       setCurrentPage: (page) => set({ currentPage: page }),
       setSelectedText: (selection) => set({ selectedText: selection }),
-      toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+      toggleSidebar: () => set((state) => {
+        // When closing sidebar, flush the pending recent doc
+        if (state.sidebarOpen && (state as any)._pendingRecentDocId) {
+          const pid = (state as any)._pendingRecentDocId as string;
+          return {
+            sidebarOpen: false,
+            _pendingRecentDocId: null,
+            documents: state.documents.map(d => d.id === pid ? { ...d, updatedAt: new Date().toISOString() } : d),
+          };
+        }
+        return { sidebarOpen: !state.sidebarOpen };
+      }),
       toggleAIPanel: () => set((state) => ({ aiPanelOpen: !state.aiPanelOpen })),
       openAIPanel: () => set({ aiPanelOpen: true }),
       closeAIPanel: () => set({ aiPanelOpen: false }),
@@ -105,6 +115,14 @@ export const useDocumentStore = create<DocumentState>()(
           ? { ...state.currentDocument, lastPosition: position }
           : state.currentDocument,
       })),
+      flushRecentOrder: () => set((state) => {
+        const pid = (state as any)._pendingRecentDocId as string | null;
+        if (!pid) return {};
+        return {
+          _pendingRecentDocId: null,
+          documents: state.documents.map(d => d.id === pid ? { ...d, updatedAt: new Date().toISOString() } : d),
+        };
+      }),
     }),
     {
       name: 'aireader-documents',

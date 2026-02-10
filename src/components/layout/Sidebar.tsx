@@ -14,7 +14,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onOpenFile, style }: SidebarProps) {
-  const { documents, currentDocument, setCurrentDocument, setDocuments, setSelectedText, closeAIPanel, openSettings, openLibrary, openHelp } = useDocumentStore();
+  const { documents, currentDocument, setCurrentDocument, setDocuments, setSelectedText, closeAIPanel, openSettings, openLibrary, openHelp, flushRecentOrder } = useDocumentStore();
   const { t, b } = useI18n();
   const documentsDir = useSettingsStore((s) => s.documentsDir);
   const [searchQuery, setSearchQuery] = useState("");
@@ -135,6 +135,7 @@ export function Sidebar({ onOpenFile, style }: SidebarProps) {
               value={sortBy}
               onChange={(e) => {
                 const v = e.target.value as any;
+                flushRecentOrder();
                 setSortBy(v);
                 if (v === "name") setSortDesc(false);
                 if (v === "progress") setSortDesc(true);

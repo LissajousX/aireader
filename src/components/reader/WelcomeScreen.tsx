@@ -157,33 +157,33 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
 
           {/* Feature cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="group rounded-xl border border-border/60 bg-card/80 hover:bg-card backdrop-blur shadow-sm hover:shadow-md hover:border-border/80 transition-all p-4">
-              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors mb-2.5">
-                <Sparkles className="w-4.5 h-4.5 text-primary" />
+            <div className="group rounded-xl border border-amber-300/40 dark:border-amber-500/30 bg-gradient-to-br from-amber-100/80 to-orange-50/60 dark:from-amber-500/15 dark:to-orange-500/10 hover:from-amber-200/90 hover:to-orange-100/70 dark:hover:from-amber-500/25 dark:hover:to-orange-500/15 shadow-sm hover:shadow-md hover:border-amber-400/60 dark:hover:border-amber-400/50 transition-all p-4">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-200/80 to-orange-200/50 dark:from-amber-500/30 dark:to-orange-500/20 flex items-center justify-center group-hover:from-amber-300/80 group-hover:to-orange-200/60 dark:group-hover:from-amber-500/40 dark:group-hover:to-orange-500/30 transition-colors mb-2.5">
+                <Sparkles className="w-4.5 h-4.5 text-amber-600 dark:text-amber-400" />
               </div>
               <div className="font-medium text-sm">{t("welcome.feature.select_translate.title")}</div>
               <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{t("welcome.feature.select_translate.desc")}</div>
             </div>
 
-            <div className="group rounded-xl border border-border/60 bg-card/80 hover:bg-card backdrop-blur shadow-sm hover:shadow-md hover:border-border/80 transition-all p-4">
-              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors mb-2.5">
-                <Languages className="w-4.5 h-4.5 text-primary" />
+            <div className="group rounded-xl border border-violet-300/40 dark:border-violet-500/30 bg-gradient-to-br from-violet-100/80 to-purple-50/60 dark:from-violet-500/15 dark:to-purple-500/10 hover:from-violet-200/90 hover:to-purple-100/70 dark:hover:from-violet-500/25 dark:hover:to-purple-500/15 shadow-sm hover:shadow-md hover:border-violet-400/60 dark:hover:border-violet-400/50 transition-all p-4">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-200/80 to-purple-200/50 dark:from-violet-500/30 dark:to-purple-500/20 flex items-center justify-center group-hover:from-violet-300/80 group-hover:to-purple-200/60 dark:group-hover:from-violet-500/40 dark:group-hover:to-purple-500/30 transition-colors mb-2.5">
+                <Languages className="w-4.5 h-4.5 text-violet-600 dark:text-violet-400" />
               </div>
               <div className="font-medium text-sm">{t("welcome.feature.grammar.title")}</div>
               <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{t("welcome.feature.grammar.desc")}</div>
             </div>
 
-            <div className="group rounded-xl border border-border/60 bg-card/80 hover:bg-card backdrop-blur shadow-sm hover:shadow-md hover:border-border/80 transition-all p-4">
-              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors mb-2.5">
-                <MessageSquareText className="w-4.5 h-4.5 text-primary" />
+            <div className="group rounded-xl border border-sky-300/40 dark:border-sky-500/30 bg-gradient-to-br from-sky-100/80 to-cyan-50/60 dark:from-sky-500/15 dark:to-cyan-500/10 hover:from-sky-200/90 hover:to-cyan-100/70 dark:hover:from-sky-500/25 dark:hover:to-cyan-500/15 shadow-sm hover:shadow-md hover:border-sky-400/60 dark:hover:border-sky-400/50 transition-all p-4">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-sky-200/80 to-cyan-200/50 dark:from-sky-500/30 dark:to-cyan-500/20 flex items-center justify-center group-hover:from-sky-300/80 group-hover:to-cyan-200/60 dark:group-hover:from-sky-500/40 dark:group-hover:to-cyan-500/30 transition-colors mb-2.5">
+                <MessageSquareText className="w-4.5 h-4.5 text-sky-600 dark:text-sky-400" />
               </div>
               <div className="font-medium text-sm">{t("welcome.feature.chat.title")}</div>
               <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{t("welcome.feature.chat.desc")}</div>
             </div>
 
-            <div className="group rounded-xl border border-border/60 bg-card/80 hover:bg-card backdrop-blur shadow-sm hover:shadow-md hover:border-border/80 transition-all p-4">
-              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors mb-2.5">
-                <StickyNote className="w-4.5 h-4.5 text-primary" />
+            <div className="group rounded-xl border border-emerald-300/40 dark:border-emerald-500/30 bg-gradient-to-br from-emerald-100/80 to-teal-50/60 dark:from-emerald-500/15 dark:to-teal-500/10 hover:from-emerald-200/90 hover:to-teal-100/70 dark:hover:from-emerald-500/25 dark:hover:to-teal-500/15 shadow-sm hover:shadow-md hover:border-emerald-400/60 dark:hover:border-emerald-400/50 transition-all p-4">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-200/80 to-teal-200/50 dark:from-emerald-500/30 dark:to-teal-500/20 flex items-center justify-center group-hover:from-emerald-300/80 group-hover:to-teal-200/60 dark:group-hover:from-emerald-500/40 dark:group-hover:to-teal-500/30 transition-colors mb-2.5">
+                <StickyNote className="w-4.5 h-4.5 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div className="font-medium text-sm">{t("welcome.feature.notes.title")}</div>
               <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{t("welcome.feature.notes.desc")}</div>

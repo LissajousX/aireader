@@ -1384,7 +1384,25 @@ fn probe_vram_bytes_macos() -> Option<u64> {
 
 #[cfg(not(target_os = "windows"))]
 fn probe_vram_bytes_unix() -> Option<u64> {
-    probe_vram_bytes_from_nvidia_smi()
+    if let Some(v) = probe_vram_bytes_from_nvidia_smi() {
+        return Some(v);
+    }
+    // AMD GPUs on Linux: read VRAM from sysfs
+    if let Ok(entries) = std::fs::read_dir("/sys/class/drm") {
+        for entry in entries.flatten() {
+            let vram_path = entry.path().join("device/mem_info_vram_total");
+            if vram_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&vram_path) {
+                    if let Ok(bytes) = content.trim().parse::<u64>() {
+                        if bytes > 0 {
+                            return Some(bytes);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(target_os = "windows")]
@@ -1509,6 +1527,43 @@ fn probe_gpu_name() -> Option<String> {
             let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if s.contains("Apple") {
                 return Some(s);
+            }
+        }
+    }
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        // Linux: try lspci to detect GPU
+        if let Ok(out) = Command::new("lspci").output() {
+            if out.status.success() {
+                let text = String::from_utf8_lossy(&out.stdout);
+                let mut gpus = vec![];
+                for line in text.lines() {
+                    let lower = line.to_ascii_lowercase();
+                    if lower.contains("vga") || lower.contains("3d") || lower.contains("display") {
+                        // Extract the part after the device class description
+                        if let Some(pos) = line.find(": ") {
+                            let name = line[pos + 2..].trim();
+                            if !name.is_empty() {
+                                gpus.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+                if !gpus.is_empty() {
+                    return Some(gpus.join(", "));
+                }
+            }
+        }
+        // Fallback: try nvidia-smi for NVIDIA GPUs
+        if let Ok(out) = Command::new("nvidia-smi")
+            .args(["--query-gpu=name", "--format=csv,noheader,nounits"])
+            .output()
+        {
+            if out.status.success() {
+                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !s.is_empty() {
+                    return Some(s);
+                }
             }
         }
     }

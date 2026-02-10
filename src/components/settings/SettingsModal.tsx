@@ -246,7 +246,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
 
   const handleResetAllData = async () => {
     const { confirm } = await import("@tauri-apps/plugin-dialog");
-    const ok = await confirm(
+    const ok1 = await confirm(
       b(
         "确定要清空所有数据并重置应用吗？\n\n这将删除：\n- 已导入的文档副本\n- 词典数据\n- 内置模型文件\n- 所有笔记/文档进度\n- 本地设置与缓存\n\n应用将自动刷新。",
         "Reset all data?\n\nThis will delete:\n- Imported document copies\n- Dictionary data\n- Built-in model files\n- All notes/reading progress\n- Local settings and cache\n\nThe app will auto-refresh."
@@ -258,7 +258,21 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
         cancelLabel: b("取消", "Cancel"),
       }
     );
-    if (!ok) return;
+    if (!ok1) return;
+
+    const ok2 = await confirm(
+      b(
+        "⚠️ 最后确认：此操作不可撤销！\n\n所有文档、模型、笔记和设置将被永久删除。确定继续？",
+        "⚠️ Final confirmation: This action is irreversible!\n\nAll documents, models, notes and settings will be permanently deleted. Continue?"
+      ),
+      {
+        title: b("不可撤销的操作", "Irreversible Action"),
+        kind: "warning",
+        okLabel: b("确认清空", "Confirm Reset"),
+        cancelLabel: b("取消", "Cancel"),
+      }
+    );
+    if (!ok2) return;
 
     try {
       setBuiltinError(null);
@@ -1306,11 +1320,13 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                           {b('智能分级', 'Smart Tier')}
                         </div>
                         <div className="text-[11px] text-muted-foreground leading-relaxed">
-                          {b('探测硬件 → 基准测试 0.6B 模型实际速度 → 选择最流畅的模型级别。',
-                             'Detect hardware → benchmark 0.6B model speed → select the smoothest tier.')}
+                          {b('探测硬件 → 多引擎基准测试（CUDA/Vulkan/Metal/CPU）→ 选最快后端 → 自动推荐最佳模型。',
+                             'Detect hardware → multi-engine benchmark (CUDA/Vulkan/Metal/CPU) → pick fastest backend → auto-recommend best model.')}
                         </div>
                         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground/70">
-                          <span>≥100 tok/s → 8B</span>
+                          <span>≥200 → 32B</span>
+                          <span>150–199 → 14B</span>
+                          <span>≥100 → 8B</span>
                           <span>50–99 → 4B</span>
                           <span>20–49 → 1.7B</span>
                           <span>&lt;20 → 0.6B</span>
