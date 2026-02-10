@@ -120,6 +120,10 @@ pub async fn ollama_stream_chat(
     let resp = if !resp.status().is_success() && resp.status().as_u16() == 400 {
         let text = resp.text().await.unwrap_or_default();
         if text.contains("does not support thinking") {
+            let _ = on_chunk.send(OllamaStreamChunk {
+                kind: "warning".into(),
+                text: "该模型不支持思考功能，已自动以普通模式运行".into(),
+            });
             body.as_object_mut().unwrap().remove("think");
             let retry_body = serde_json::to_string(&body).unwrap();
             client

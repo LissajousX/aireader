@@ -6,6 +6,7 @@ interface StreamCallbacks {
   onContent?: (text: string) => void;
   onDone?: () => void;
   onError?: (error: string) => void;
+  onWarning?: (text: string) => void;
 }
 
 interface ChatMessage {
@@ -24,22 +25,110 @@ interface StreamOptions {
 
 const CONCISE_THINKING_PROMPT = 'Think briefly and concisely. Focus on the task, avoid over-analysis. Respond directly.';
 
-// Qwen3 official best-practice sampling parameters (only applied to qwen3 models)
-const QWEN3_THINKING_OPTIONS = { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0 };
-const QWEN3_NOTHINK_OPTIONS  = { temperature: 0.7, top_p: 0.8,  top_k: 20, min_p: 0 };
+// ── Vendor-recommended sampling parameters for popular models ──
+// Sources: official model cards, HuggingFace generation_config.json, vendor docs
+// Only parameters with clear vendor recommendations are included.
+interface SamplingParams {
+  temperature: number;
+  top_p?: number;
+  top_k?: number;
+  min_p?: number;
+}
+
+interface ModelProfile {
+  prefixes: string[];          // Ollama model name prefixes to match (lowercase)
+  thinking?: SamplingParams;   // params when thinking/reasoning is on
+  normal: SamplingParams;      // params when thinking is off or model has no thinking
+  thinkFalseBuggy?: boolean;   // true if think:false API param is broken for this model
+}
+
+const MODEL_PROFILES: ModelProfile[] = [
+  // Qwen3 — official best practices from model card
+  // https://huggingface.co/Qwen/Qwen3-32B
+  {
+    prefixes: ['qwen3'],
+    thinking: { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0 },
+    normal:   { temperature: 0.7, top_p: 0.8,  top_k: 20, min_p: 0 },
+  },
+  // DeepSeek-R1 — official: T=0.6, top_p=0.95
+  // https://huggingface.co/deepseek-ai/DeepSeek-R1-0528
+  {
+    prefixes: ['deepseek-r1'],
+    thinking: { temperature: 0.6, top_p: 0.95 },
+    normal:   { temperature: 0.6, top_p: 0.95 },
+  },
+  // DeepSeek-V3 — official: T=0.3 (they remap 1.0→0.3 on their API)
+  // https://huggingface.co/deepseek-ai/DeepSeek-V3-0324
+  {
+    prefixes: ['deepseek-v3', 'deepseek-v2'],
+    normal: { temperature: 0.3 },
+  },
+  // Phi-4-reasoning — official: T=0.8, top_k=50, top_p=0.95
+  // https://huggingface.co/microsoft/Phi-4-reasoning
+  {
+    prefixes: ['phi4-reasoning', 'phi-4-reasoning'],
+    thinking: { temperature: 0.8, top_p: 0.95, top_k: 50 },
+    normal:   { temperature: 0.8, top_p: 0.95, top_k: 50 },
+  },
+  // Phi-4 (non-reasoning) — benchmarks use T=0.5
+  // https://arxiv.org/pdf/2412.08905
+  {
+    prefixes: ['phi4', 'phi-4'],
+    normal: { temperature: 0.5 },
+  },
+  // Mistral-Small (instruct) — official: T=0.15
+  // https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506
+  {
+    prefixes: ['mistral-small'],
+    normal: { temperature: 0.15 },
+  },
+  // Magistral-Small (reasoning) — official: T=0.7, top_p=0.95
+  // https://huggingface.co/mistralai/Magistral-Small-2506
+  {
+    prefixes: ['magistral'],
+    thinking: { temperature: 0.7, top_p: 0.95 },
+    normal:   { temperature: 0.7, top_p: 0.95 },
+  },
+  // Gemma 3 — official: T=1.0, top_p=0.95, top_k=64
+  // https://huggingface.co/google/gemma-3-12b-it/discussions/25
+  {
+    prefixes: ['gemma3', 'gemma-3'],
+    normal: { temperature: 1.0, top_p: 0.95, top_k: 64 },
+  },
+  // Gemma 2 — T=1.0, top_p=0.95 (same family defaults)
+  {
+    prefixes: ['gemma2', 'gemma-2'],
+    normal: { temperature: 1.0, top_p: 0.95 },
+  },
+  // GLM-Z1 (reasoning) — official: T=0.6, top_p=0.95, top_k=40
+  // https://huggingface.co/THUDM/GLM-Z1-32B-0414
+  {
+    prefixes: ['glm-z1'],
+    thinking: { temperature: 0.6, top_p: 0.95, top_k: 40 },
+    normal:   { temperature: 0.6, top_p: 0.95, top_k: 40 },
+  },
+];
 
 // Models where think:false is broken (leaks thinking into content field).
 // For these, we omit the think param entirely and rely on /no_think prompt tag.
 // See: https://github.com/ollama/ollama/issues/12917
-const THINK_FALSE_BUGGY_MODELS = ['qwen3:4b'];
+const THINK_FALSE_BUGGY_PREFIXES = ['qwen3:4b'];
+
+function getModelProfile(model: string): ModelProfile | undefined {
+  const m = model.toLowerCase();
+  return MODEL_PROFILES.find(p => p.prefixes.some(prefix => m.startsWith(prefix)));
+}
 
 function isThinkFalseBuggy(model: string): boolean {
   const m = model.toLowerCase();
-  return THINK_FALSE_BUGGY_MODELS.some(b => m.startsWith(b));
+  return THINK_FALSE_BUGGY_PREFIXES.some(b => m.startsWith(b));
 }
 
-function isQwen3Model(model: string): boolean {
-  return model.toLowerCase().startsWith('qwen3');
+function getOllamaOptions(model: string, thinking: boolean): SamplingParams | undefined {
+  const profile = getModelProfile(model);
+  if (!profile) return undefined;
+  if (thinking && profile.thinking) return profile.thinking;
+  return profile.normal;
 }
 
 function resolveThinkingMode(prompt: string, mode: ThinkingMode): { thinking: boolean; mode: ThinkingMode; promptToSend: string } {
@@ -105,16 +194,14 @@ export async function streamGenerate(
         builtinMessages = [{ role: 'system', content: CONCISE_THINKING_PROMPT }, ...builtinMessages];
       }
       // T3: Retry with backoff for 503 (model still loading after auto_start)
-      // Apply Qwen3 official sampling parameters
-      const samplingParams = builtinThinking
-        ? { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0 }
-        : { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0 };
+      // Apply vendor-recommended sampling parameters for built-in model (Qwen3)
+      const builtinSampling = getOllamaOptions(settings.builtinModelId, builtinThinking) || {};
       const requestBody = JSON.stringify({
         model: settings.builtinModelId,
         messages: builtinMessages,
         stream: true,
         enable_thinking: builtinThinking,
-        ...samplingParams,
+        ...builtinSampling,
       });
       const maxRetries = 6;
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -386,17 +473,16 @@ export async function streamGenerate(
       thinkParam = isBuggy ? undefined : false;
     }
 
-    // Qwen3 sampling params only for qwen3 models; other models get no extra options
-    const isQwen3 = isQwen3Model(modelName);
-    const ollamaOptions = isQwen3
-      ? (thinkingResolved.thinking ? QWEN3_THINKING_OPTIONS : QWEN3_NOTHINK_OPTIONS)
-      : undefined;
+    // Apply vendor-recommended sampling params based on model name
+    const ollamaOptions = getOllamaOptions(modelName, thinkingResolved.thinking);
 
     let doneCalled = false;
     const onChunk = new Channel<{ kind: string; text: string }>();
     onChunk.onmessage = (msg) => {
       if (msg.kind === 'thinking') {
         if (thinkingResolved.thinking) callbacks.onThinking?.(msg.text);
+      } else if (msg.kind === 'warning') {
+        callbacks.onWarning?.(msg.text);
       } else if (msg.kind === 'content') {
         callbacks.onContent?.(msg.text);
       } else if (msg.kind === 'done' && !doneCalled) {

@@ -73,6 +73,13 @@ export function AIPanel({ style }: AIPanelProps) {
     });
   };
   const thinkingEnabled = thinkingMode !== 'off';
+  const [warningText, setWarningText] = useState<string | null>(null);
+  const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showWarning = (text: string) => {
+    setWarningText(text);
+    if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+    warningTimerRef.current = setTimeout(() => setWarningText(null), 8000);
+  };
   const [inputText, setInputText] = useState("");
 
   // T4: Locked chat context — when user enters chat tab with selected text, lock it as context
@@ -347,6 +354,7 @@ export function AIPanel({ style }: AIPanelProps) {
         finishTask(key, taskId, finalContent, finalThinking, textToProcess);
       },
       onError: (error) => setError(key, taskId, error),
+      onWarning: showWarning,
     }, { thinkingMode, signal });
   };
 
@@ -497,6 +505,7 @@ export function AIPanel({ style }: AIPanelProps) {
         finishTask(key, taskId, finalContent, finalThinking, textToProcess);
       },
       onError: (error) => setError(key, taskId, error),
+      onWarning: showWarning,
     }, { thinkingMode, signal, messages });
   };
 
@@ -550,6 +559,7 @@ export function AIPanel({ style }: AIPanelProps) {
         finishTask(key, taskId, finalContent, finalThinking, textToProcess);
       },
       onError: (error) => setError(key, taskId, error),
+      onWarning: showWarning,
     }, { thinkingMode, signal });
   };
 
@@ -921,6 +931,14 @@ export function AIPanel({ style }: AIPanelProps) {
           </button>
         ))}
       </div>
+
+      {warningText && (
+        <div className="mx-2 mt-1.5 px-2.5 py-1.5 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/15 rounded-lg flex items-center gap-1.5">
+          <span>⚠</span>
+          <span className="flex-1">{warningText}</span>
+          <button onClick={() => setWarningText(null)} className="text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200">✕</button>
+        </div>
+      )}
 
       <div className="flex-1 overflow-auto p-3">
         {activeTab === "notes" ? (
