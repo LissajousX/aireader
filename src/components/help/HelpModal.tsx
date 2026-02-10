@@ -29,7 +29,7 @@ const GUIDE_ZH = `# AiReader 用户指南
 | 功能 | 说明 |
 |---|---|
 | 📖 多格式阅读 | PDF / EPUB / Markdown / TXT，阅读进度自动保存 |
-| 🤖 本地 AI 推理 | 内置 llama.cpp，零配置开箱即用，自动适配 CPU/CUDA/Vulkan |
+| 🤖 本地 AI 推理 | 内置 llama.cpp，零配置开箱即用，自动适配 CPU/CUDA/Vulkan/Metal |
 | 🌐 选中即译 | 直译 / 意译 / 白话解释，复杂长句自动拆解 |
 | 📝 文法解释 | 拆解句子结构、词汇用法 |
 | 💬 上下文对话 | 围绕文档内容自由对话 |
@@ -185,16 +185,20 @@ PDF 和 EPUB 文档支持目录侧栏。
 
 **智能分级策略**: 系统采用三层自适应策略自动匹配最流畅的模型：
 
-1. **硬件探测** — 检测 GPU 类型与显存，选择计算模式（CUDA / Vulkan / CPU）
-2. **资源初筛** — 根据 CPU 核心数、内存、显存预估模型级别
-3. **基准测试** — 用 llama-bench 实测推理速度 (tok/s)，精确定级
+1. **硬件探测** — 检测 GPU 类型与显存，枚举所有可用后端（CUDA / Vulkan / Metal / CPU）
+2. **多引擎测试** — 逐个后端用 llama-bench 实测推理速度 (tok/s)，自动选择最快后端
+3. **模型推荐** — 根据测试结果推荐模型，展示完整列表由用户自选
 
 | 基准测试 | 推荐 |
 |---|---|
-| ≥100 tok/s | T3 (8B) |
-| 50–99 | T2 (4B) |
-| 20–49 | T1 (1.7B) |
-| <20 | T0 (0.6B) |
+| ≥200 tok/s | T6 (32B) |
+| 150–199 | T5 (14B) |
+| ≥100 | T4 (8B) |
+| 50–99 | T3 (4B) |
+| 20–49 | T2 (1.7B) |
+| <20 | T1 (0.6B) |
+
+可用模型（均为 Q4_K_M 量化）：Qwen3-0.6B (~0.5GB) / 1.7B (~1.2GB) / 4B (~2.7GB) / 8B (~5GB) / 14B (~9GB) / 32B (~19GB)。
 
 集成显卡（Intel UHD/HD/Iris，显存<2GB）自动回退 CPU 模式。觉得慢？简易模式下有「降级到更小模型」按钮。
 
@@ -220,15 +224,15 @@ PDF 和 EPUB 文档支持目录侧栏。
 ## 常见问题
 
 **Q: 内置 AI 模型下载很慢？**
-在高级模式中点击 **链接** 复制下载地址 → 用其他工具下载 → 点击 **导入** 按钮导入。
+系统会自动探测最快的镜像源（国内 ModelScope / 海外 HuggingFace）。如果仍然慢，可在高级模式中点击 **链接** 复制下载地址 → 用其他工具下载 → 点击 **导入** 导入。
 
 **Q: 深度思考开关有什么用？**
 - 内置模型：真正关闭/开启思考，关闭后更快
 - Ollama：软关闭，模型仍会思考但隐藏输出
 
-**Q: 支持哪些 GPU？**
-- NVIDIA (CUDA 12.4 / 13.1)
-- AMD/Intel 等通过 Vulkan
+**Q: 支持哪些平台和 GPU？**
+- Windows x64 / macOS (arm64/x64) / Ubuntu x64
+- NVIDIA (CUDA 12.4/13.1) / AMD·Intel (Vulkan) / Apple Silicon (Metal)
 - CPU 模式所有电脑可用
 
 **Q: 集成显卡为什么不用 GPU 加速？**
@@ -238,8 +242,8 @@ PDF 和 EPUB 文档支持目录侧栏。
 简易模式下点「降级到更小模型」，或在高级模式手动选择更小模型。
 
 **Q: 如何卸载 / 更新？**
-- 卸载：Windows 设置 → 应用 → 搜索 "Aireader" → 卸载。可勾选「删除应用数据」清理。若模型目录在外部路径需手动删除
 - 更新：下载新版安装包直接运行，自动覆盖，数据保留
+- 卸载：通过系统应用管理卸载。模型目录若配置在外部路径需手动删除
 
 ---
 
@@ -263,14 +267,14 @@ const GUIDE_EN = `# AiReader User Guide
 | Feature | Description |
 |---|---|
 | 📖 Multi-Format Reader | PDF / EPUB / Markdown / TXT with auto-saved progress |
-| 🤖 Local AI Inference | Built-in llama.cpp, zero-config, auto adapts to CPU/CUDA/Vulkan |
+| 🤖 Local AI Inference | Built-in llama.cpp, zero-config, auto adapts to CPU/CUDA/Vulkan/Metal |
 | 🌐 Select to Translate | Literal / free / plain-language translation, complex sentence breakdown |
 | 📝 Grammar Explain | Break down sentence structure and vocabulary |
 | 💬 Contextual Chat | Free-form chat about document content |
-| 📒 Smart Notes | AI-generated draft notes, human-confirmed persistent storage |
+| 📒 Smart Notes | AI-generated drafts, human-confirmed persistent storage |
 | 🧠 Deep Thinking | True thinking mode with Qwen3 |
-| � Offline Dictionary | Built-in ECDICT + CC-CEDICT, bidirectional Chinese-English, double-click to look up |
-| � Multiple Backends | Also supports Ollama, OpenAI-compatible APIs |
+| 📚 Offline Dictionary | Built-in ECDICT + CC-CEDICT, bidirectional Chinese-English lookup |
+| 🌐 Multiple Backends | Also supports Ollama, OpenAI-compatible APIs |
 
 ---
 
@@ -278,12 +282,12 @@ const GUIDE_EN = `# AiReader User Guide
 
 <!-- LAYOUT_DIAGRAM -->
 
-### Panel Descriptions
+### Panel Description
 
-- **Header**: Sidebar toggle, document title, theme switch, AI panel toggle, settings
-- **Sidebar**: AiReader Logo (click to go home), import button, document list (search/sort/filter), bottom shortcuts
-- **Reading Area**: Document content with TOC sidebar and text selection
-- **AI Panel**: Four tabs (Translate/Grammar/Chat/Notes), model selector, deep thinking toggle
+- **Header**: Sidebar toggle, document title, theme toggle, AI panel toggle, settings
+- **Sidebar**: AiReader logo (click to return to welcome), import button, document list (search/sort/filter), bottom shortcuts
+- **Reading Area**: Document content display, TOC sidebar, text selection
+- **AI Panel**: Translate/Grammar/Chat/Notes tabs, model switching, deep thinking toggle
 - **Floating Toolbar**: TOC toggle, page navigation, zoom, reading mode, document theme
 
 All panel dividers are draggable to resize.
@@ -295,7 +299,7 @@ All panel dividers are draggable to resize.
 | Method | Description |
 |---|---|
 | 📂 Import Documents | Select one or more files |
-| 📁 Import Folder | Pick a folder to scan for supported files |
+| 📁 Import Folder | Select a folder, auto-scans all supported files |
 
 Supported formats: \`.pdf\`, \`.epub\`, \`.md\`, \`.txt\`
 
@@ -303,48 +307,48 @@ Supported formats: \`.pdf\`, \`.epub\`, \`.md\`, \`.txt\`
 
 ## Reading Documents
 
-### PDF Reader
+### PDF Reading
 
-- **Continuous Scroll**: All pages laid out vertically with smooth scrolling
-- **Zoom**: Use +/- buttons in toolbar or type a percentage directly
-- **Page Navigation**: Toolbar shows current/total pages; type a page number to jump
-- **Text Selection**: Selecting text auto-opens the AI panel
-- **Doc Theme**: Toggle light/dark independently for the document area
+- **Continuous scroll**: All pages arranged vertically, smooth scrolling
+- **Zoom**: Via floating toolbar +/- buttons or direct percentage input
+- **Page navigation**: Toolbar shows current/total pages, click to input and jump
+- **Text selection**: Selecting text auto-opens AI panel
+- **Document theme**: Independent light/dark toggle for reading area
 
-### EPUB Reader
+### EPUB Reading
 
-- **Paginated**: Default left/right paging; click left/right area or toolbar buttons
-- **Scrolling Mode**: Switch via toolbar to continuous scroll
+- **Paginated mode**: Default left/right pagination, click areas or toolbar buttons
+- **Scroll mode**: Toggle via toolbar to continuous scroll
 - **Zoom**: Adjust text size
-- **Doc Theme**: Independent light/dark toggle
-- **TOC Tracking**: Current chapter highlighted in the table of contents
+- **Document theme**: Independent light/dark toggle
+- **TOC tracking**: Current chapter highlighted in table of contents
 
 ### Markdown / TXT
 
 - Markdown supports headings, lists, code blocks, tables, images, etc.
-- TXT displays plain text with word wrap
+- TXT plain text display with word wrap
 
 ---
 
 ## Table of Contents
 
-PDF and EPUB documents support a table of contents sidebar.
+PDF and EPUB support a TOC sidebar.
 
-1. **Edge Strip**: A narrow strip button \`>\` on the left edge of the reading area
-2. **Floating Toolbar**: The TOC button on the far left of the bottom toolbar
+1. **Edge strip**: Narrow strip button \`>\` on the left side of reading area
+2. **Floating toolbar**: TOC button on the far left
 
-Features: hierarchical display, click to navigate, active position highlight, resizable width
+Features: Hierarchical display, click to navigate, active highlight, resizable width
 
 ---
 
 ## AI Assistant
 
-### How to Open
+### Opening
 
 - Click the **AI** button in the header
-- Selecting text in the document auto-opens the AI panel
+- Selecting text in a document auto-opens the panel
 
-### Four Tabs
+### Function Tabs
 
 #### 1. Translate
 
@@ -352,35 +356,35 @@ Features: hierarchical display, click to navigate, active position highlight, re
 |---|---|
 | Free | Natural, fluent translation |
 | Literal | Word-by-word translation |
-| Plain | Simplest language explanation |
+| Plain | Explained in simplest language |
 
 Auto-detects language direction: Chinese→English or English→Chinese.
 
-#### 2. Grammar
+#### 2. Grammar Explain
 
-Breaks down grammar structure and vocabulary usage for deeper understanding.
+Breaks down selected text's grammar structure and vocabulary usage for deeper understanding.
 
 #### 3. Chat
 
-- **Contextual Chat**: After selecting text, switch to Chat tab — the AI automatically locks your selection as context so you can ask follow-up questions about it
-- A context preview bar at the top shows the locked text; you can update or clear it
-- Full-document chat is not yet supported; please select text first
+- **Context-aware**: Select text then switch to Chat tab, AI locks selected content as context for follow-up questions
+- Context shown at top of chat, can be updated or cleared
+- Full-document chat not yet supported — please select text first
 - **Enter** to send, **Shift+Enter** for new line
 - Select multiple messages to save as notes
 - Each assistant message shows thinking process (collapsible)
 
 #### 4. Notes
 
-- Save translation/explanation results as notes with one click
-- Notes are linked to documents; switching documents auto-loads notes
+- One-click save from translation/explanation results
+- Notes linked to documents, auto-loaded on switch
 - Export as Markdown file
 
 ### Deep Thinking
 
-- **ON** (amber highlight): AI thinks before answering, higher quality
-- **OFF**: AI answers directly, faster response
+- **On** (amber highlight): AI thinks before answering, higher quality
+- **Off**: AI answers directly, faster response
 
-Built-in Qwen3 models support **truly disabling** thinking for faster, lighter responses.
+**Built-in Qwen3 models** support truly disabling thinking — when off, the model skips internal reasoning entirely, faster and lighter.
 
 ---
 
@@ -388,9 +392,9 @@ Built-in Qwen3 models support **truly disabling** thinking for faster, lighter r
 
 **Double-click** a word in the document to show a dictionary popup.
 
-- **ECDICT (EN→ZH)**: Look up English words with Chinese definitions (phonetic, POS, explanation)
-- **CC-CEDICT (ZH→EN)**: Look up Chinese words with English definitions (pinyin, POS, explanation)
-- Toggle each direction in Settings
+- **ECDICT**: English word → Chinese definition (phonetics, parts of speech, meaning)
+- **CC-CEDICT**: Chinese word → English definition (pinyin, parts of speech, meaning)
+- Each direction can be toggled independently in Settings
 
 ---
 
@@ -403,38 +407,42 @@ All settings take effect immediately — no save button needed.
 | Setting | Description |
 |---|---|
 | UI Language | Chinese / English |
-| Dictionary | Toggle ECDICT (EN→ZH) and CC-CEDICT (ZH→EN) independently |
-| Library Folder | Custom path for imported copies |
-| Model Storage | AI model files (GGUF) location; migration supported on change, running service auto-stops |
+| Offline Dictionary | ECDICT (EN→CN) and CC-CEDICT (CN→EN) toggles |
+| Document Library Directory | Custom storage path for imported copies |
+| Model Storage Directory | AI model files (GGUF) location; migration offered when changed; running service auto-stopped |
 
 ### AI
 
 | Provider | Description |
 |---|---|
-| 🖥 Built-in | One-click local Qwen3 model setup; start/stop/download directly from the dropdown |
-| 🦙 Ollama | Enter server URL to connect |
+| 🖥 Built-in Local | One-click local Qwen3 setup, manage from dropdown |
+| 🦙 Ollama | Enter server address to connect |
 | 🌐 OpenAI Compatible | Connect to any OpenAI-compatible API |
 
-**Model Switching**: Use the unified model dropdown in the AI panel header to manage and switch between all providers' models.
+**Model Switching**: Unified model dropdown at the top of AI panel manages all sources.
 
 **Smart Tier Strategy**: The system uses a 3-layer adaptive strategy:
 
-1. **Hardware Detection** — Detect GPU type & VRAM, select compute mode (CUDA / Vulkan / CPU)
-2. **Resource Pre-filter** — Quick estimate based on CPU cores, RAM, VRAM
-3. **Benchmark** — Run llama-bench to measure actual tok/s, precisely select the smoothest model
+1. **Hardware Detection** — Detect GPU type & VRAM, enumerate all available backends (CUDA / Vulkan / Metal / CPU)
+2. **Multi-Engine Benchmark** — Run llama-bench on each backend to measure actual tok/s, auto-select the fastest
+3. **Model Recommendation** — Recommend model based on results, present full list for user to choose
 
 | Benchmark | Recommendation |
 |---|---|
-| ≥100 tok/s | T3 (8B) |
-| 50–99 | T2 (4B) |
-| 20–49 | T1 (1.7B) |
-| <20 | T0 (0.6B) |
+| ≥200 tok/s | T6 (32B) |
+| 150–199 | T5 (14B) |
+| ≥100 | T4 (8B) |
+| 50–99 | T3 (4B) |
+| 20–49 | T2 (1.7B) |
+| <20 | T1 (0.6B) |
+
+Available models (all Q4_K_M): Qwen3-0.6B (~0.5GB) / 1.7B (~1.2GB) / 4B (~2.7GB) / 8B (~5GB) / 14B (~9GB) / 32B (~19GB).
 
 Integrated GPUs (Intel UHD/HD/Iris, VRAM<2GB) auto fall back to CPU mode. Too slow? Use the "Downgrade" button in Simple Mode.
 
 ### Storage
 
-- Document cache management (LRU policy)
+- Document cache management (LRU strategy)
 - Reset app (clears all data back to initial state)
 
 ---
@@ -443,37 +451,37 @@ Integrated GPUs (Intel UHD/HD/Iris, VRAM<2GB) auto fall back to CPU mode. Too sl
 
 | Shortcut | Function |
 |---|---|
-| Double-click | Dictionary popup |
+| Double-click word | Dictionary popup |
 | Select text | Auto-open AI panel |
-| Enter (in chat) | Send message |
+| Enter (chat) | Send message |
 | Shift + Enter | New line |
-| F12 / Ctrl+Shift+I | DevTools |
+| F12 / Ctrl+Shift+I | Developer tools |
 
 ---
 
 ## FAQ
 
 **Q: Model download is slow?**
-Click **Link** in advanced mode → download with another tool → click **Import**.
+The system auto-probes the fastest mirror (ModelScope in China / HuggingFace overseas). If still slow, click **Link** in advanced mode → download with another tool → click **Import**.
 
-**Q: What does Deep Thinking do?**
-- Built-in: Truly enables/disables thinking; faster when off
-- Ollama: Soft toggle; model still thinks but output is hidden
+**Q: What does the Deep Thinking toggle do?**
+- Built-in models: Truly enables/disables thinking, faster when off
+- Ollama: Soft disable, model still thinks internally but hides output
 
-**Q: Which GPUs are supported?**
-- NVIDIA (CUDA 12.4 / 13.1)
-- AMD/Intel via Vulkan
+**Q: Which platforms and GPUs are supported?**
+- Windows x64 / macOS (arm64/x64) / Ubuntu x64
+- NVIDIA (CUDA 12.4/13.1) / AMD·Intel (Vulkan) / Apple Silicon (Metal)
 - CPU mode works on all computers
 
 **Q: Why doesn't my integrated GPU use GPU acceleration?**
-Integrated GPUs typically have < 2GB VRAM. GPU acceleration is actually slower than CPU mode. The system auto-detects and falls back.
+Integrated GPUs typically have < 2GB VRAM. GPU mode is actually slower than pure CPU. The system auto-detects and falls back.
 
-**Q: Model is too slow?**
-Use the "Downgrade to a smaller model" button in Simple Mode, or manually select a smaller model in Advanced Mode.
+**Q: Model too slow?**
+Use the "Downgrade to smaller model" button in Simple Mode, or manually select a smaller model in Advanced Mode.
 
 **Q: How to uninstall / update?**
-- Uninstall: Windows Settings → Apps → search "Aireader" → Uninstall. Check "Delete app data" to clean up. External model directory must be deleted manually
 - Update: Download new installer and run. Automatic overwrite, data preserved
+- Uninstall: Use system app management. External model directory must be deleted manually
 
 ---
 

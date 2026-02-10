@@ -289,9 +289,9 @@ fn is_builtin_qwen3_model_id(model_id: &str) -> bool {
         "qwen3_0_6b_q4_k_m"
             | "qwen3_1_7b_q4_k_m"
             | "qwen3_4b_q4_k_m"
-            | "qwen3_4b_q5_k_m"
             | "qwen3_8b_q4_k_m"
-            | "qwen3_8b_q5_k_m"
+            | "qwen3_14b_q4_k_m"
+            | "qwen3_32b_q4_k_m"
     )
 }
 
@@ -300,9 +300,9 @@ fn model_file_name(model_id: &str) -> &'static str {
         "qwen3_0_6b_q4_k_m" => "Qwen3-0.6B-Q4_K_M.gguf",
         "qwen3_1_7b_q4_k_m" => "Qwen3-1.7B-Q4_K_M.gguf",
         "qwen3_4b_q4_k_m" => "Qwen3-4B-Q4_K_M.gguf",
-        "qwen3_4b_q5_k_m" => "Qwen3-4B-Q5_K_M.gguf",
         "qwen3_8b_q4_k_m" => "Qwen3-8B-Q4_K_M.gguf",
-        "qwen3_8b_q5_k_m" => "Qwen3-8B-Q5_K_M.gguf",
+        "qwen3_14b_q4_k_m" => "Qwen3-14B-Q4_K_M.gguf",
+        "qwen3_32b_q4_k_m" => "Qwen3-32B-Q4_K_M.gguf",
         _ => "Qwen3-0.6B-Q4_K_M.gguf",
     }
 }
@@ -315,9 +315,10 @@ fn legacy_model_file_name(model_id: &str) -> Option<&'static str> {
 }
 
 fn model_urls(model_id: &str) -> [&'static str; 3] {
-    // Mirror 1: ModelScope (primary, fast in China)
-    // Mirror 2: HuggingFace (international fallback)
-    // Mirror 3: HuggingFace (same, retry)
+    // Mirror 1: ModelScope (fast in China)
+    // Mirror 2: HuggingFace (fast overseas)
+    // Mirror 3: HuggingFace (retry)
+    // Actual download order is determined by probe_fastest_mirror() at runtime
     match model_id {
         "qwen3_0_6b_q4_k_m" => [
             "https://www.modelscope.cn/models/unsloth/Qwen3-0.6B-GGUF/resolve/master/Qwen3-0.6B-Q4_K_M.gguf",
@@ -334,20 +335,20 @@ fn model_urls(model_id: &str) -> [&'static str; 3] {
             "https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
             "https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
         ],
-        "qwen3_4b_q5_k_m" => [
-            "https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q5_K_M.gguf",
-            "https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q5_K_M.gguf",
-            "https://huggingface.co/unsloth/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q5_K_M.gguf",
-        ],
         "qwen3_8b_q4_k_m" => [
             "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q4_K_M.gguf",
             "https://huggingface.co/unsloth/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf",
             "https://huggingface.co/unsloth/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf",
         ],
-        "qwen3_8b_q5_k_m" => [
-            "https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q5_K_M.gguf",
-            "https://huggingface.co/unsloth/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q5_K_M.gguf",
-            "https://huggingface.co/unsloth/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q5_K_M.gguf",
+        "qwen3_14b_q4_k_m" => [
+            "https://www.modelscope.cn/models/unsloth/Qwen3-14B-GGUF/resolve/master/Qwen3-14B-Q4_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf",
+        ],
+        "qwen3_32b_q4_k_m" => [
+            "https://www.modelscope.cn/models/unsloth/Qwen3-32B-GGUF/resolve/master/Qwen3-32B-Q4_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-32B-GGUF/resolve/main/Qwen3-32B-Q4_K_M.gguf",
+            "https://huggingface.co/unsloth/Qwen3-32B-GGUF/resolve/main/Qwen3-32B-Q4_K_M.gguf",
         ],
         _ => ["", "", ""],
     }
@@ -374,9 +375,9 @@ fn model_id_from_path(models_dir: &Path, path: &Path) -> Option<String> {
         "qwen3_0_6b_q4_k_m",
         "qwen3_1_7b_q4_k_m",
         "qwen3_4b_q4_k_m",
-        "qwen3_4b_q5_k_m",
         "qwen3_8b_q4_k_m",
-        "qwen3_8b_q5_k_m",
+        "qwen3_14b_q4_k_m",
+        "qwen3_32b_q4_k_m",
     ] {
         if path == model_file_path(models_dir, id) {
             return Some(id.to_string());
@@ -434,6 +435,43 @@ fn report_progress(app: &AppHandle, ch: &Channel<DownloadProgress>, progress: Do
     let _ = ch.send(progress);
 }
 
+/// Race HEAD requests to all unique mirrors and return indices sorted by response time (fastest first).
+/// Falls back to original order if all probes fail or time out.
+async fn probe_fastest_mirror(client: &reqwest::Client, urls: &[&str]) -> Vec<usize> {
+    use std::collections::HashMap;
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    let mut tasks = vec![];
+
+    for (i, &url) in urls.iter().enumerate() {
+        if url.is_empty() { continue; }
+        // deduplicate: only probe each unique URL once, map back to first index
+        if seen.contains_key(url) { continue; }
+        seen.insert(url, i);
+        let client = client.clone();
+        let url_owned = url.to_string();
+        tasks.push((i, tokio::spawn(async move {
+            let start = Instant::now();
+            match tokio::time::timeout(
+                Duration::from_secs(8),
+                client.head(&url_owned).send()
+            ).await {
+                Ok(Ok(_resp)) => Some(start.elapsed()),
+                _ => None,
+            }
+        })));
+    }
+
+    let mut results = vec![];
+    for (i, handle) in tasks {
+        if let Ok(Some(dur)) = handle.await {
+            results.push((i, dur));
+        }
+    }
+    results.sort_by_key(|(_, d)| *d);
+    println!("[builtin_llm] Mirror probe results: {:?}", results.iter().map(|(i, d)| (urls[*i].chars().take(50).collect::<String>(), d.as_millis())).collect::<Vec<_>>());
+    results.iter().map(|(i, _)| *i).collect()
+}
+
 async fn download_to_file(app: &AppHandle, ch: &Channel<DownloadProgress>, urls: &[&str], dest_file: &Path, label: &str, cancel: &AtomicBool) -> Result<(), String> {
     if let Some(parent) = dest_file.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -447,7 +485,22 @@ async fn download_to_file(app: &AppHandle, ch: &Channel<DownloadProgress>, urls:
     let tmp_path = dest_file.with_extension("part");
     let mut errors: Vec<String> = vec![];
 
-    for url in urls {
+    // Probe mirrors to find the fastest one (handles China vs overseas automatically)
+    let order = probe_fastest_mirror(&client, urls).await;
+    let ordered_urls: Vec<&str> = if order.is_empty() {
+        urls.to_vec()
+    } else {
+        let mut result: Vec<&str> = order.iter().filter_map(|&i| urls.get(i).copied()).collect();
+        // Append any URLs that didn't respond (as last-resort fallbacks)
+        for (i, &url) in urls.iter().enumerate() {
+            if !url.is_empty() && !order.contains(&i) {
+                result.push(url);
+            }
+        }
+        result
+    };
+
+    for url in &ordered_urls {
         if cancel.load(Ordering::Relaxed) {
             let _ = std::fs::remove_file(&tmp_path);
             return Err("Download cancelled".to_string());
@@ -757,15 +810,15 @@ fn default_runtime_zip_name(compute_mode: &str, gpu_backend: &str, cuda_version:
             "gpu" | "hybrid" => {
                 if gpu_backend.eq_ignore_ascii_case("cuda") {
                     if cuda_version == "13.1" {
-                        "llama-b7927-bin-win-cuda-13.1-x64.zip"
+                        "llama-b7966-bin-win-cuda-13.1-x64.zip"
                     } else {
-                        "llama-b7927-bin-win-cuda-12.4-x64.zip"
+                        "llama-b7966-bin-win-cuda-12.4-x64.zip"
                     }
                 } else {
-                    "llama-b7927-bin-win-vulkan-x64.zip"
+                    "llama-b7966-bin-win-vulkan-x64.zip"
                 }
             }
-            _ => "llama-b7927-bin-win-cpu-x64.zip",
+            _ => "llama-b7966-bin-win-cpu-x64.zip",
         }
     }
     #[cfg(target_os = "macos")]
@@ -795,21 +848,22 @@ fn default_runtime_zip_name(compute_mode: &str, gpu_backend: &str, cuda_version:
 }
 
 /// Return the default download base URLs for runtime archives on the current platform.
-/// Returns [ModelScope mirror (fast in China), GitHub official release (international fallback)].
+/// Returns [ModelScope mirror (fast in China), GitHub official release (fast overseas)].
+/// Actual download order is determined by probe_fastest_mirror() at runtime.
 fn default_runtime_base_urls() -> [&'static str; 2] {
     #[cfg(target_os = "macos")]
     {[
-        "https://www.modelscope.cn/datasets/Lissajous/llamacppformacos/resolve/master",
+        "https://www.modelscope.cn/datasets/Lissajous/llamacppforall/resolve/master/b7966",
         "https://github.com/ggml-org/llama.cpp/releases/download/b7966",
     ]}
     #[cfg(target_os = "windows")]
     {[
-        "https://www.modelscope.cn/datasets/Lissajous/llamacppforwin64/resolve/master",
-        "https://github.com/ggml-org/llama.cpp/releases/download/b7927",
+        "https://www.modelscope.cn/datasets/Lissajous/llamacppforall/resolve/master/b7966",
+        "https://github.com/ggml-org/llama.cpp/releases/download/b7966",
     ]}
     #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
     {[
-        "https://www.modelscope.cn/datasets/Lissajous/llamacppforlinux/resolve/master",
+        "https://www.modelscope.cn/datasets/Lissajous/llamacppforall/resolve/master/b7966",
         "https://github.com/ggml-org/llama.cpp/releases/download/b7966",
     ]}
 }
@@ -1350,9 +1404,9 @@ fn cap_tier_by_vram(mut tier: i32, vram_bytes: Option<u64>) -> i32 {
         _ => return tier,
     };
     let gb = vram_bytes / 1024 / 1024 / 1024;
-    let cap = if gb < 4 { 0 } else if gb < 6 { 1 } else if gb < 10 { 2 } else { 3 };
+    let cap = if gb < 4 { 0 } else if gb < 6 { 1 } else if gb < 10 { 2 } else if gb < 12 { 3 } else if gb < 24 { 4 } else { 5 };
     tier = tier.min(cap);
-    tier.clamp(0, 3)
+    tier.clamp(0, 5)
 }
 
 fn clamp_gpu_layers_by_vram(mut layers: i32, vram_bytes: Option<u64>) -> i32 {
@@ -1595,7 +1649,9 @@ fn tier_from_resources(total_mem_gb: u64, vram_bytes: Option<u64>, compute_mode:
     let ram_tier = if total_mem_gb < 8 { 0 }
         else if total_mem_gb < 12 { 1 }
         else if total_mem_gb < 20 { 2 }
-        else { 3 };
+        else if total_mem_gb < 32 { 3 }
+        else if total_mem_gb < 48 { 4 }
+        else { 5 };
 
     let cpu_tier = cpu_performance_tier(cpu_cores);
 
@@ -1607,7 +1663,9 @@ fn tier_from_resources(total_mem_gb: u64, vram_bytes: Option<u64>, compute_mode:
     let vram_tier = if vram_gb < 4 { 0 }
         else if vram_gb < 6 { 1 }
         else if vram_gb < 10 { 2 }
-        else { 3 };
+        else if vram_gb < 12 { 3 }
+        else if vram_gb < 24 { 4 }
+        else { 5 };
 
     if compute_mode == "gpu" {
         // GPU mode: VRAM is hard constraint, also can't exceed RAM capacity
@@ -1619,16 +1677,11 @@ fn tier_from_resources(total_mem_gb: u64, vram_bytes: Option<u64>, compute_mode:
     }
 }
 
-fn tier_to_model_id(tier: i32, total_mem_gb: u64) -> String {
+fn tier_to_model_id(tier: i32, _total_mem_gb: u64) -> String {
     match tier {
-        3 => {
-            // Conservative: prefer Q4 on <= 24GB
-            if total_mem_gb <= 24 {
-                "qwen3_8b_q4_k_m".to_string()
-            } else {
-                "qwen3_8b_q5_k_m".to_string()
-            }
-        }
+        5 => "qwen3_32b_q4_k_m".to_string(),
+        4 => "qwen3_14b_q4_k_m".to_string(),
+        3 => "qwen3_8b_q4_k_m".to_string(),
         2 => "qwen3_4b_q4_k_m".to_string(),
         1 => "qwen3_1_7b_q4_k_m".to_string(),
         _ => "qwen3_0_6b_q4_k_m".to_string(),
@@ -1645,6 +1698,8 @@ fn parse_preferred_tier(raw: Option<&str>) -> Option<i32> {
         "1" => Some(1),
         "2" => Some(2),
         "3" => Some(3),
+        "4" => Some(4),
+        "5" => Some(5),
         _ => None,
     }
 }
@@ -1714,7 +1769,7 @@ pub fn builtin_llm_recommend(options: Option<BuiltinRecommendOptions>) -> Result
     let mut tier = preferred_tier.unwrap_or_else(|| {
         tier_from_resources(total_mem_gb, probe.vram_bytes, &compute_mode, probe.cpu_cores)
     });
-    tier = tier.clamp(0, 3);
+    tier = tier.clamp(0, 5);
 
     if compute_mode == "gpu" || compute_mode == "hybrid" {
         tier = cap_tier_by_vram(tier, probe.vram_bytes);
@@ -1776,7 +1831,7 @@ pub async fn builtin_llm_auto_start(
         let mut tier = preferred_tier.unwrap_or_else(|| {
             tier_from_resources(total_mem_gb, probe.vram_bytes, compute_mode, probe.cpu_cores)
         });
-        tier = tier.clamp(0, 3);
+        tier = tier.clamp(0, 5);
 
         let mut t = if compute_mode == "gpu" || compute_mode == "hybrid" {
             cap_tier_by_vram(tier, probe.vram_bytes)
@@ -1864,9 +1919,9 @@ pub fn builtin_llm_list_models(state: State<AppState>) -> Result<Vec<BuiltinMode
             "qwen3_0_6b_q4_k_m",
             "qwen3_1_7b_q4_k_m",
             "qwen3_4b_q4_k_m",
-            "qwen3_4b_q5_k_m",
             "qwen3_8b_q4_k_m",
-            "qwen3_8b_q5_k_m",
+            "qwen3_14b_q4_k_m",
+            "qwen3_32b_q4_k_m",
         ] {
             if file_name == model_file_name(id) {
                 model_id = Some(id.to_string());
@@ -2293,11 +2348,15 @@ pub struct BenchmarkResult {
 }
 
 /// Determine model tier from 0.6B benchmark tok/s.
+/// Benchmark runs on 0.6B model; scale tok/s to estimate larger model performance.
 /// Model size scaling (approximate, memory-bandwidth bound):
-///   1.7B ≈ 2.8x slower,  4B ≈ 6.5x slower,  8B ≈ 13x slower
+///   1.7B ≈ 2.8x slower,  4B ≈ 6.5x slower,  8B ≈ 13x slower,
+///   14B ≈ 23x slower,  32B ≈ 53x slower
 /// Fluency target: ≥ 8 tok/s generation speed.
 fn tier_from_benchmark(tps: f64, total_mem_gb: u64) -> (i32, String) {
-    let tier = if tps >= 100.0 { 3 }      // 8B estimated ~7.7 tok/s
+    let tier = if tps >= 420.0 { 5 }       // 32B estimated ~7.9 tok/s
+        else if tps >= 185.0 { 4 }         // 14B estimated ~8.0 tok/s
+        else if tps >= 100.0 { 3 }         // 8B estimated ~7.7 tok/s
         else if tps >= 50.0 { 2 }          // 4B estimated ~7.7 tok/s
         else if tps >= 20.0 { 1 }          // 1.7B estimated ~7.1 tok/s
         else { 0 };                         // stay with 0.6B
@@ -2306,7 +2365,9 @@ fn tier_from_benchmark(tps: f64, total_mem_gb: u64) -> (i32, String) {
     let ram_tier = if total_mem_gb < 8 { 0 }
         else if total_mem_gb < 12 { 1 }
         else if total_mem_gb < 20 { 2 }
-        else { 3 };
+        else if total_mem_gb < 32 { 3 }
+        else if total_mem_gb < 48 { 4 }
+        else { 5 };
     let final_tier = tier.min(ram_tier);
     let model_id = tier_to_model_id(final_tier, total_mem_gb);
     (final_tier, model_id)

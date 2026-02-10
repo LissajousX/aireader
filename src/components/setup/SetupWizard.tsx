@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { ChevronRight, ChevronLeft, Sparkles, Check, Loader2, Zap, BookOpen, ChevronDown, Globe, Server, CheckCircle, Wifi } from "lucide-react";
+import { ChevronRight, ChevronLeft, Sparkles, Check, Loader2, Zap, BookOpen, ChevronDown, Globe, Server, CheckCircle, Wifi, Award, AlertTriangle, HardDrive, Cpu } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { cn } from "@/lib/utils";
+import { BUILTIN_MODELS, type BuiltinModelDef } from "@/config/downloads";
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -37,6 +38,14 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   // Connection test states
   const [ollamaTestStatus, setOllamaTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
   const [apiTestStatus, setApiTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+  // Multi-engine benchmark + model selection
+  type BenchEntry = { label: string; computeMode: string; gpuBackend: string; cudaVersion: string; tps: number };
+  const [benchPhase, setBenchPhase] = useState<'idle' | 'running' | 'selecting'>('idle');
+  const [benchEntries, setBenchEntries] = useState<BenchEntry[]>([]);
+  const [bestEngine, setBestEngine] = useState<BenchEntry | null>(null);
+  const [recommendedTier, setRecommendedTier] = useState<number>(0);
+  const [recommendedModelId, setRecommendedModelId] = useState<string>('qwen3_0_6b_q4_k_m');
+  const [selectedModelId, setSelectedModelId] = useState<string>('qwen3_0_6b_q4_k_m');
 
   // Load current paths from backend
   useEffect(() => {
@@ -88,105 +97,214 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     setStep("ai");
   };
 
+  // ─── Multi-engine benchmark + model selection ───
+
+  type ProbeResult = {
+    cpuCores: number; cpuBrand: string; totalMemoryBytes: number;
+    vramBytes: number | null; gpuName: string | null;
+    hasCuda: boolean; hasVulkan: boolean; hasMetal: boolean; isAppleSilicon: boolean;
+  };
+  type RecommendResult = {
+    recommendedModelId: string; recommendedComputeMode: string;
+    recommendedGpuBackend: string; recommendedCudaVersion: string;
+    probe: ProbeResult;
+  };
+  type BenchResult = { tokensPerSecond: number; recommendedTier: number; recommendedModelId: string };
+
+  const createCh = () => {
+    const ch = new Channel<any>();
+    ch.onmessage = (msg: any) => setDownloadProgress(msg);
+    return ch;
+  };
+
+  /** Determine all viable compute backends from probe */
+  const getComputeCandidates = (probe: ProbeResult, cudaVersion: string): Array<{ label: string; computeMode: string; gpuBackend: string; cudaVersion: string }> => {
+    const candidates: Array<{ label: string; computeMode: string; gpuBackend: string; cudaVersion: string }> = [];
+    if (probe.hasMetal) {
+      candidates.push({ label: 'Metal GPU', computeMode: 'gpu', gpuBackend: 'metal', cudaVersion });
+    }
+    if (probe.hasCuda) {
+      candidates.push({ label: `CUDA GPU`, computeMode: 'gpu', gpuBackend: 'cuda', cudaVersion });
+    }
+    if (probe.hasVulkan) {
+      candidates.push({ label: 'Vulkan GPU', computeMode: 'hybrid', gpuBackend: 'vulkan', cudaVersion });
+    }
+    candidates.push({ label: 'CPU', computeMode: 'cpu', gpuBackend: 'none', cudaVersion });
+    return candidates;
+  };
+
   const handleQuickSetup = async () => {
     setAiError(null);
     setLoading(true);
+    setBenchPhase('running');
+    setBenchEntries([]);
+    setBestEngine(null);
     try {
       const s = useSettingsStore.getState();
       const { builtinCudaVersion, builtinGpuLayers, builtinDownloadUrls } = s;
 
       // Step 1: Detect hardware
       setAiStep(b("正在探测硬件...", "Detecting hardware..."));
-      type RecommendResult = { recommendedModelId: string; recommendedComputeMode: string; recommendedGpuBackend: string; recommendedCudaVersion: string };
       const r = await invoke<RecommendResult>("builtin_llm_recommend", {
         options: { preferredTier: "auto", preferredCompute: "auto", cudaVersion: builtinCudaVersion },
       });
 
-      useSettingsStore.getState().setBuiltinComputeMode(r.recommendedComputeMode as any);
-      useSettingsStore.getState().setBuiltinGpuBackend(r.recommendedGpuBackend as any);
-      useSettingsStore.getState().setBuiltinCudaVersion(r.recommendedCudaVersion as any);
-
+      const candidates = getComputeCandidates(r.probe, r.recommendedCudaVersion);
       const benchModelId = "qwen3_0_6b_q4_k_m";
-      const createCh = () => {
-        const ch = new Channel<any>();
-        ch.onmessage = (msg: any) => setDownloadProgress(msg);
-        return ch;
-      };
 
-      // Step 2: Install runtime + benchmark model
-      setAiStep(b("正在准备推理引擎和基准模型...", "Preparing runtime engine & benchmark model..."));
+      // Step 2: Install benchmark model with the first (best guess) backend
+      setAiStep(b(
+        `正在准备基准测试模型... (${candidates[0].label})`,
+        `Preparing benchmark model... (${candidates[0].label})`
+      ));
       await invoke("builtin_llm_install", {
         options: {
-          modelId: benchModelId,
-          mode: "auto",
-          computeMode: r.recommendedComputeMode,
-          gpuBackend: r.recommendedGpuBackend,
-          cudaVersion: r.recommendedCudaVersion,
+          modelId: benchModelId, mode: "auto",
+          computeMode: candidates[0].computeMode,
+          gpuBackend: candidates[0].gpuBackend,
+          cudaVersion: candidates[0].cudaVersion,
           modelUrl: builtinDownloadUrls[benchModelId] || undefined,
         },
         onProgress: createCh(),
       });
 
-      // Step 3: Benchmark
-      setAiStep(b("正在测试推理性能...", "Benchmarking inference speed..."));
-      setDownloadProgress(null);
-      type BenchResult = { tokensPerSecond: number; recommendedModelId: string };
-      const bench = await invoke<BenchResult>("builtin_llm_benchmark", {
-        options: {
-          computeMode: r.recommendedComputeMode,
-          gpuBackend: r.recommendedGpuBackend,
-          cudaVersion: r.recommendedCudaVersion,
-          gpuLayers: builtinGpuLayers,
-        },
-      });
+      // Step 3: Benchmark each backend
+      const results: BenchEntry[] = [];
+      let bestTps = 0;
+      let bestIdx = 0;
+      let bestBenchResult: BenchResult | null = null;
 
-      const finalModelId = bench.recommendedModelId;
-
-      // Step 4: Install recommended model if different
-      if (finalModelId !== benchModelId) {
+      for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i];
         setAiStep(b(
-          `性能: ${bench.tokensPerSecond.toFixed(1)} tok/s，正在安装推荐模型...`,
-          `Speed: ${bench.tokensPerSecond.toFixed(1)} tok/s, installing recommended model...`
+          `正在测试 ${c.label}... (${i + 1}/${candidates.length})`,
+          `Benchmarking ${c.label}... (${i + 1}/${candidates.length})`
         ));
-        await invoke("builtin_llm_install", {
-          options: {
-            modelId: finalModelId,
-            mode: "auto",
-            computeMode: r.recommendedComputeMode,
-            gpuBackend: r.recommendedGpuBackend,
-            cudaVersion: r.recommendedCudaVersion,
-            modelUrl: builtinDownloadUrls[finalModelId] || undefined,
-          },
-          onProgress: createCh(),
-        });
+        setDownloadProgress(null);
+
+        // Install runtime for this backend if not the first one
+        if (i > 0) {
+          try {
+            await invoke("builtin_llm_install_runtime", {
+              options: {
+                computeMode: c.computeMode,
+                gpuBackend: c.gpuBackend,
+                cudaVersion: c.cudaVersion,
+              },
+              onProgress: createCh(),
+            });
+          } catch {
+            // Runtime install failed (e.g. download error), skip this backend
+            continue;
+          }
+        }
+
+        try {
+          const bench = await invoke<BenchResult>("builtin_llm_benchmark", {
+            options: {
+              computeMode: c.computeMode,
+              gpuBackend: c.gpuBackend,
+              cudaVersion: c.cudaVersion,
+              gpuLayers: builtinGpuLayers,
+            },
+          });
+          const entry: BenchEntry = { ...c, tps: bench.tokensPerSecond };
+          results.push(entry);
+          if (bench.tokensPerSecond > bestTps) {
+            bestTps = bench.tokensPerSecond;
+            bestIdx = results.length - 1;
+            bestBenchResult = bench;
+          }
+        } catch {
+          // Benchmark failed for this backend, skip
+          continue;
+        }
       }
 
-      // Step 5: Start service
+      if (results.length === 0 || !bestBenchResult) {
+        throw new Error(b("所有引擎基准测试均失败", "All engine benchmarks failed"));
+      }
+
+      // Save best engine config
+      const best = results[bestIdx];
+      setBenchEntries(results);
+      setBestEngine(best);
+      setRecommendedTier(bestBenchResult.recommendedTier);
+      setRecommendedModelId(bestBenchResult.recommendedModelId);
+      setSelectedModelId(bestBenchResult.recommendedModelId);
+
+      useSettingsStore.getState().setBuiltinComputeMode(best.computeMode as any);
+      useSettingsStore.getState().setBuiltinGpuBackend(best.gpuBackend as any);
+      useSettingsStore.getState().setBuiltinCudaVersion(best.cudaVersion as any);
+
+      // Enter model selection phase
+      setBenchPhase('selecting');
+      setAiStep(null);
+      setDownloadProgress(null);
+    } catch (e: any) {
+      const msg = typeof e === "string" ? e : e?.message || String(e);
+      if (!/cancelled/i.test(msg)) setAiError(msg);
+      setAiStep(null);
+      setBenchPhase('idle');
+    } finally {
+      setLoading(false);
+      setDownloadProgress(null);
+    }
+  };
+
+  /** Install user-selected model and start service */
+  const handleInstallModel = async () => {
+    if (!bestEngine) return;
+    setAiError(null);
+    setLoading(true);
+    setBenchPhase('running');
+    try {
+      const s = useSettingsStore.getState();
+      const { builtinGpuLayers, builtinDownloadUrls } = s;
+      const modelId = selectedModelId;
+
+      // Download model
+      setAiStep(b("正在下载模型...", "Downloading model..."));
+      await invoke("builtin_llm_install", {
+        options: {
+          modelId,
+          mode: "auto",
+          computeMode: bestEngine.computeMode,
+          gpuBackend: bestEngine.gpuBackend,
+          cudaVersion: bestEngine.cudaVersion,
+          modelUrl: builtinDownloadUrls[modelId] || undefined,
+        },
+        onProgress: createCh(),
+      });
+
+      // Start service
       setAiStep(b("正在启动 AI 服务...", "Starting AI service..."));
       setDownloadProgress(null);
       await invoke("builtin_llm_ensure_running", {
         options: {
-          modelId: finalModelId,
+          modelId,
           mode: "auto",
-          computeMode: r.recommendedComputeMode,
-          gpuBackend: r.recommendedGpuBackend,
+          computeMode: bestEngine.computeMode,
+          gpuBackend: bestEngine.gpuBackend,
           gpuLayers: builtinGpuLayers,
-          cudaVersion: r.recommendedCudaVersion,
+          cudaVersion: bestEngine.cudaVersion,
         },
         onProgress: createCh(),
       });
 
       // Save config
-      useSettingsStore.getState().setBuiltinModelId(finalModelId);
+      useSettingsStore.getState().setBuiltinModelId(modelId);
       useSettingsStore.getState().setBuiltinAutoEnabled(true);
       useSettingsStore.getState().saveSettings();
 
       setBuiltinConfigured(true);
+      setBenchPhase('idle');
       setAiStep(null);
     } catch (e: any) {
       const msg = typeof e === "string" ? e : e?.message || String(e);
       if (!/cancelled/i.test(msg)) setAiError(msg);
       setAiStep(null);
+      setBenchPhase('selecting'); // go back to selection
     } finally {
       setLoading(false);
       setDownloadProgress(null);
@@ -295,7 +413,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                   <Sparkles className="w-4 h-4 text-purple-500" />
                   {b("AI 模型目录", "AI Model Storage")}
                 </label>
-                <p className="text-xs text-muted-foreground">{b("AI 模型文件（GGUF）较大（0.5~5GB），请确保磁盘空间充足", "AI model files (GGUF) are large (0.5~5GB), ensure enough disk space")}</p>
+                <p className="text-xs text-muted-foreground">{b("AI 模型文件（GGUF）较大（0.5~19GB），请确保磁盘空间充足", "AI model files (GGUF) are large (0.5~19GB), ensure enough disk space")}</p>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -364,8 +482,8 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               </div>
             )}
 
-            {/* Built-in AI */}
-            {!aiStep && (
+            {/* Built-in AI — idle / configured state */}
+            {!aiStep && benchPhase !== 'selecting' && (
               <div className={cn("rounded-xl border overflow-hidden", builtinConfigured ? "border-green-500/40 bg-green-500/[0.04]" : "border-primary/30 bg-primary/[0.03]")}>
                 <div className="flex items-center gap-3 p-3">
                   {builtinConfigured ? <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" /> : <Zap className="w-5 h-5 text-primary flex-shrink-0" />}
@@ -374,7 +492,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                     <div className="text-[11px] text-muted-foreground">
                       {builtinConfigured
                         ? b("已配置，后续启动自动运行", "Configured, will auto-start on launch")
-                        : b("一键检测硬件、下载模型、启动服务", "Auto-detect hardware, download model, start service")}
+                        : b("自动检测硬件、测试引擎性能、选择最优配置", "Auto-detect hardware, benchmark engines, find optimal config")}
                     </div>
                   </div>
                   {!builtinConfigured && (
@@ -386,8 +504,116 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               </div>
             )}
 
+            {/* Model selection UI — shown after benchmark completes */}
+            {benchPhase === 'selecting' && !aiStep && (
+              <div className="space-y-4">
+                {/* Benchmark results summary */}
+                <div className="rounded-xl border border-primary/30 bg-primary/[0.03] p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-medium">{b("引擎性能测试结果", "Engine Benchmark Results")}</span>
+                  </div>
+                  <div className="grid gap-1.5">
+                    {benchEntries.map((entry, i) => (
+                      <div key={i} className={cn(
+                        "flex items-center justify-between px-3 py-1.5 rounded-lg text-xs",
+                        entry === bestEngine ? "bg-primary/10 text-primary font-medium" : "bg-muted/40 text-muted-foreground"
+                      )}>
+                        <span className="flex items-center gap-1.5">
+                          {entry === bestEngine && <Award className="w-3 h-3" />}
+                          {entry.label}
+                        </span>
+                        <span className="font-mono">{entry.tps.toFixed(1)} tok/s</span>
+                      </div>
+                    ))}
+                  </div>
+                  {bestEngine && (
+                    <div className="text-[11px] text-muted-foreground">
+                      {b(`最优引擎: ${bestEngine.label} (${bestEngine.tps.toFixed(1)} tok/s)`, `Best engine: ${bestEngine.label} (${bestEngine.tps.toFixed(1)} tok/s)`)}
+                    </div>
+                  )}
+                </div>
+
+                {/* Model selection list */}
+                <div className="rounded-xl border border-border overflow-hidden">
+                  <div className="px-4 py-2.5 bg-muted/30 border-b border-border">
+                    <span className="text-sm font-medium">{b("选择 AI 模型", "Choose AI Model")}</span>
+                    <span className="text-[11px] text-muted-foreground ml-2">{b("模型越大翻译越好，但需要更多资源", "Larger models translate better but need more resources")}</span>
+                  </div>
+                  <div className="divide-y divide-border">
+                    {BUILTIN_MODELS.map((m: BuiltinModelDef) => {
+                      const isRecommended = m.id === recommendedModelId;
+                      const isSelected = m.id === selectedModelId;
+                      const isTooLarge = m.tier > recommendedTier;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setSelectedModelId(m.id)}
+                          className={cn(
+                            "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
+                            isSelected ? "bg-primary/[0.08]" : "hover:bg-muted/30",
+                          )}
+                        >
+                          {/* Radio indicator */}
+                          <div className={cn(
+                            "w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0",
+                            isSelected ? "border-primary" : "border-muted-foreground/30"
+                          )}>
+                            {isSelected && <div className="w-2 h-2 rounded-full bg-primary" />}
+                          </div>
+
+                          {/* Model info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className={cn("text-sm font-medium", isSelected && "text-primary")}>{m.title}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Q4_K_M</span>
+                              {isRecommended && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium flex items-center gap-0.5">
+                                  <Award className="w-2.5 h-2.5" />{b("推荐", "Best")}
+                                </span>
+                              )}
+                              {isTooLarge && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 flex items-center gap-0.5">
+                                  <AlertTriangle className="w-2.5 h-2.5" />{b("可能较慢", "May be slow")}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground mt-0.5">
+                              {b(m.ramHintZh, m.ramHintEn)}
+                            </div>
+                          </div>
+
+                          {/* Tier badge */}
+                          <div className={cn(
+                            "text-[10px] font-mono px-2 py-1 rounded flex-shrink-0",
+                            m.tier <= 1 ? "bg-green-500/10 text-green-600" :
+                            m.tier <= 3 ? "bg-blue-500/10 text-blue-600" :
+                            "bg-purple-500/10 text-purple-600"
+                          )}>
+                            T{m.tier + 1}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Install button */}
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => { setBenchPhase('idle'); }}>
+                    {b("取消", "Cancel")}
+                  </Button>
+                  <Button size="sm" onClick={handleInstallModel} disabled={loading}>
+                    <HardDrive className="w-3.5 h-3.5 mr-1.5" />
+                    {b("安装并启动", "Install & Start")}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Ollama */}
-            {!aiStep && (
+            {!aiStep && benchPhase !== 'selecting' && (
               <div className={cn("rounded-xl border overflow-hidden", ollamaConfigured ? "border-green-500/40 bg-green-500/[0.04]" : "border-border")}>
                 <button type="button" onClick={() => setShowOllama(!showOllama)} className="w-full flex items-center gap-3 p-3 hover:bg-muted/20 transition-colors text-left">
                   {ollamaConfigured ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Server className="w-4 h-4 text-muted-foreground" />}
@@ -432,7 +658,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             )}
 
             {/* OpenAI-compatible API */}
-            {!aiStep && (
+            {!aiStep && benchPhase !== 'selecting' && (
               <div className={cn("rounded-xl border overflow-hidden", apiConfigured ? "border-green-500/40 bg-green-500/[0.04]" : "border-border")}>
                 <button type="button" onClick={() => setShowOpenAI(!showOpenAI)} className="w-full flex items-center gap-3 p-3 hover:bg-muted/20 transition-colors text-left">
                   {apiConfigured ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Globe className="w-4 h-4 text-muted-foreground" />}
@@ -483,21 +709,23 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               </div>
             )}
 
-            <div className="flex justify-between pt-2">
-              <Button variant="ghost" onClick={() => setStep("paths")} disabled={loading}>
-                <ChevronLeft className="w-4 h-4 mr-1" /> {b("上一步", "Back")}
-              </Button>
-              <div className="flex gap-2">
-                <Button variant="ghost" onClick={handleSkipAI} disabled={loading}>
-                  {b("跳过", "Skip")}
+            {benchPhase !== 'selecting' && (
+              <div className="flex justify-between pt-2">
+                <Button variant="ghost" onClick={() => setStep("paths")} disabled={loading}>
+                  <ChevronLeft className="w-4 h-4 mr-1" /> {b("上一步", "Back")}
                 </Button>
-                {(builtinConfigured || ollamaConfigured || apiConfigured) && (
-                  <Button onClick={() => setStep("done")}>
-                    {b("下一步", "Next")} <ChevronRight className="w-4 h-4 ml-1" />
+                <div className="flex gap-2">
+                  <Button variant="ghost" onClick={handleSkipAI} disabled={loading}>
+                    {b("跳过", "Skip")}
                   </Button>
-                )}
+                  {(builtinConfigured || ollamaConfigured || apiConfigured) && (
+                    <Button onClick={() => setStep("done")}>
+                      {b("下一步", "Next")} <ChevronRight className="w-4 h-4 ml-1" />
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 

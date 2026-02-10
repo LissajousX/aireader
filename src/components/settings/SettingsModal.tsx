@@ -9,6 +9,7 @@ import { useI18n } from "@/i18n";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getErrorMessage } from "@/lib/utils";
+import { getRuntimeDownloads, BUILTIN_MODELS as BUILTIN_MODELS_CONFIG } from "@/config/downloads";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -109,71 +110,24 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const [startedConfig, setStartedConfig] = useState<{ modelId: string; cm: string; gb: string; cv: string; gl: number } | null>(null);
 
 
-  const RUNTIME_DOWNLOADS: Array<{ key: string; label: string; defaultUrl: string }> = [
-    { key: '__rt_cpu', label: 'llama.cpp CPU', defaultUrl: 'https://www.modelscope.cn/datasets/Lissajous/llamacppforwin64/resolve/master/llama-b7927-bin-win-cpu-x64.zip' },
-    { key: '__rt_vulkan', label: 'llama.cpp Vulkan', defaultUrl: 'https://www.modelscope.cn/datasets/Lissajous/llamacppforwin64/resolve/master/llama-b7927-bin-win-vulkan-x64.zip' },
-    { key: '__rt_cuda_12.4', label: 'llama.cpp CUDA 12.4', defaultUrl: 'https://www.modelscope.cn/datasets/Lissajous/llamacppforwin64/resolve/master/llama-b7927-bin-win-cuda-12.4-x64.zip' },
-    { key: '__rt_cuda_13.1', label: 'llama.cpp CUDA 13.1', defaultUrl: 'https://www.modelscope.cn/datasets/Lissajous/llamacppforwin64/resolve/master/llama-b7927-bin-win-cuda-13.1-x64.zip' },
-    { key: '__cudart_12.4', label: 'CUDA Runtime 12.4', defaultUrl: 'https://www.modelscope.cn/datasets/Lissajous/llamacppforwin64/resolve/master/cudart-llama-bin-win-cuda-12.4-x64.zip' },
-    { key: '__cudart_13.1', label: 'CUDA Runtime 13.1', defaultUrl: 'https://www.modelscope.cn/datasets/Lissajous/llamacppforwin64/resolve/master/cudart-llama-bin-win-cuda-13.1-x64.zip' },
-  ];
+  const RUNTIME_DOWNLOADS = getRuntimeDownloads();
 
   const getRuntimeUrlKeys = (computeMode: string, gpuBackend: string, cudaVersion: string) => {
     if (computeMode === 'cpu') return { rtKey: '__rt_cpu', cudartKey: null };
     if (gpuBackend === 'cuda') return { rtKey: `__rt_cuda_${cudaVersion}`, cudartKey: `__cudart_${cudaVersion}` };
+    if (gpuBackend === 'metal') return { rtKey: '__rt_metal', cudartKey: null };
     return { rtKey: '__rt_vulkan', cudartKey: null };
   };
 
-  const BUILTIN_MODELS: Array<{ id: string; title: string; subtitle: string; tier: number; ramHint: string; url: string }> = [
-    {
-      id: 'qwen3_0_6b_q4_k_m',
-      title: 'Qwen3-0.6B',
-      subtitle: b('Q4_K_M · 极速轻量', 'Q4_K_M · Ultra-light'),
-      tier: 0,
-      ramHint: b('≥4GB 内存', '≥4GB RAM'),
-      url: 'https://www.modelscope.cn/models/unsloth/Qwen3-0.6B-GGUF/resolve/master/Qwen3-0.6B-Q4_K_M.gguf',
-    },
-    {
-      id: 'qwen3_1_7b_q4_k_m',
-      title: 'Qwen3-1.7B',
-      subtitle: b('Q4_K_M · 性价比之选', 'Q4_K_M · Best value'),
-      tier: 1,
-      ramHint: b('≥8GB 内存', '≥8GB RAM'),
-      url: 'https://www.modelscope.cn/models/unsloth/Qwen3-1.7B-GGUF/resolve/master/Qwen3-1.7B-Q4_K_M.gguf',
-    },
-    {
-      id: 'qwen3_4b_q4_k_m',
-      title: 'Qwen3-4B',
-      subtitle: b('Q4_K_M · 更强能力', 'Q4_K_M · Stronger'),
-      tier: 2,
-      ramHint: b('≥12GB 内存', '≥12GB RAM'),
-      url: 'https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q4_K_M.gguf',
-    },
-    {
-      id: 'qwen3_4b_q5_k_m',
-      title: 'Qwen3-4B',
-      subtitle: b('Q5_K_M · 高质量均衡', 'Q5_K_M · Quality balanced'),
-      tier: 2,
-      ramHint: b('≥16GB 内存', '≥16GB RAM'),
-      url: 'https://www.modelscope.cn/models/unsloth/Qwen3-4B-GGUF/resolve/master/Qwen3-4B-Q5_K_M.gguf',
-    },
-    {
-      id: 'qwen3_8b_q4_k_m',
-      title: 'Qwen3-8B',
-      subtitle: b('Q4_K_M · 高性能', 'Q4_K_M · High perf'),
-      tier: 3,
-      ramHint: b('≥16GB 内存 / 独显', '≥16GB RAM / dGPU'),
-      url: 'https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q4_K_M.gguf',
-    },
-    {
-      id: 'qwen3_8b_q5_k_m',
-      title: 'Qwen3-8B',
-      subtitle: b('Q5_K_M · 高质量推荐', 'Q5_K_M · High quality'),
-      tier: 3,
-      ramHint: b('≥20GB 内存 / 独显', '≥20GB RAM / dGPU'),
-      url: 'https://www.modelscope.cn/models/unsloth/Qwen3-8B-GGUF/resolve/master/Qwen3-8B-Q5_K_M.gguf',
-    },
-  ];
+  const BUILTIN_MODELS: Array<{ id: string; title: string; subtitle: string; tier: number; ramHint: string; url: string }> =
+    BUILTIN_MODELS_CONFIG.map(m => ({
+      id: m.id,
+      title: m.title,
+      subtitle: b(m.subtitleZh, m.subtitleEn),
+      tier: m.tier,
+      ramHint: b(m.ramHintZh, m.ramHintEn),
+      url: m.urls[0], // ModelScope as primary display URL
+    }));
 
   const refreshBuiltinStatus = async () => {
     if (!isOpen) return;
@@ -553,7 +507,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   };
 
   const handleModelDowngrade = async () => {
-    const TIER_ORDER = ['qwen3_8b_q5_k_m', 'qwen3_8b_q4_k_m', 'qwen3_4b_q5_k_m', 'qwen3_4b_q4_k_m', 'qwen3_1_7b_q4_k_m', 'qwen3_0_6b_q4_k_m'];
+    const TIER_ORDER = ['qwen3_32b_q4_k_m', 'qwen3_14b_q4_k_m', 'qwen3_8b_q4_k_m', 'qwen3_4b_q4_k_m', 'qwen3_1_7b_q4_k_m', 'qwen3_0_6b_q4_k_m'];
     const currentIdx = TIER_ORDER.indexOf(builtinModelId);
     const nextIdx = currentIdx >= 0 ? currentIdx + 1 : TIER_ORDER.length - 1;
     if (nextIdx >= TIER_ORDER.length) return; // already smallest

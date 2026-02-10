@@ -36,7 +36,7 @@ interface SettingsState {
   ollamaModel: string;
   builtinModelId: string;
   builtinAutoEnabled: boolean;
-  builtinPreferredTier: 'auto' | 0 | 1 | 2 | 3;
+  builtinPreferredTier: 'auto' | 0 | 1 | 2 | 3 | 4 | 5;
   builtinPreferredCompute: 'auto' | 'cpu' | 'gpu' | 'hybrid';
   builtinComputeMode: 'cpu' | 'gpu' | 'hybrid';
   builtinGpuBackend: 'vulkan' | 'cuda' | 'metal';
@@ -60,7 +60,7 @@ interface SettingsState {
   setOllamaModel: (model: string) => void;
   setBuiltinModelId: (id: string) => void;
   setBuiltinAutoEnabled: (enabled: boolean) => void;
-  setBuiltinPreferredTier: (tier: 'auto' | 0 | 1 | 2 | 3) => void;
+  setBuiltinPreferredTier: (tier: 'auto' | 0 | 1 | 2 | 3 | 4 | 5) => void;
   setBuiltinPreferredCompute: (mode: 'auto' | 'cpu' | 'gpu' | 'hybrid') => void;
   setBuiltinComputeMode: (mode: 'cpu' | 'gpu' | 'hybrid') => void;
   setBuiltinGpuBackend: (backend: 'vulkan' | 'cuda' | 'metal') => void;
@@ -145,6 +145,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if (raw === '1') return 1;
     if (raw === '2') return 2;
     if (raw === '3') return 3;
+    if (raw === '4') return 4;
+    if (raw === '5') return 5;
     return 'auto';
   })(),
   builtinPreferredCompute: (() => {
@@ -195,9 +197,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if (state.builtinModelId === 'qwen3_0_6b_q4_k_m') return 'Qwen3-0.6B (Q4_K_M)';
     if (state.builtinModelId === 'qwen3_1_7b_q4_k_m') return 'Qwen3-1.7B (Q4_K_M)';
     if (state.builtinModelId === 'qwen3_4b_q4_k_m') return 'Qwen3-4B (Q4_K_M)';
-    if (state.builtinModelId === 'qwen3_4b_q5_k_m') return 'Qwen3-4B (Q5_K_M)';
     if (state.builtinModelId === 'qwen3_8b_q4_k_m') return 'Qwen3-8B (Q4_K_M)';
-    if (state.builtinModelId === 'qwen3_8b_q5_k_m') return 'Qwen3-8B (Q5_K_M)';
+    if (state.builtinModelId === 'qwen3_14b_q4_k_m') return 'Qwen3-14B (Q4_K_M)';
+    if (state.builtinModelId === 'qwen3_32b_q4_k_m') return 'Qwen3-32B (Q4_K_M)';
     return state.builtinModelId;
   },
   setUiLanguage: (lang) => set({ uiLanguage: lang }),
@@ -274,7 +276,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
     if ((saved as any).builtinPreferredTier !== undefined) {
       const t = (saved as any).builtinPreferredTier;
-      if (t === 0 || t === 1 || t === 2 || t === 3 || t === 'auto') {
+      if (t === 0 || t === 1 || t === 2 || t === 3 || t === 4 || t === 5 || t === 'auto') {
         set({ builtinPreferredTier: t });
       }
     }

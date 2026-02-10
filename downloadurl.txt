@@ -1,0 +1,38 @@
+此文件已迁移至代码中的统一配置：
+
+前端配置: src/config/downloads.ts
+  - 运行时 URL（按平台自动适配 Windows/macOS/Ubuntu x64）
+  - 模型 URL（双镜像：ModelScope + HuggingFace）
+  - 模型等级定义（T1-T6）及资源需求提示
+  - BUILTIN_MODELS 数组供 SetupWizard 模型选择列表使用
+
+后端配置: src-tauri/src/builtin_llm.rs
+  - model_urls()        → 模型下载链接（含镜像回退），仅 Q4_K_M
+  - default_runtime_base_urls() → 运行时下载基础 URL
+  - default_runtime_zip_name()  → 平台特定的运行时文件名
+
+版本: llama.cpp b7966
+量化: 仅 Q4_K_M（Q5_K_M 已移除）
+镜像策略: 自动探测最快镜像（HEAD 请求竞速），国内 ModelScope 快则优先，海外 HuggingFace/GitHub 快则优先
+
+支持平台:
+  - Windows x64: CPU / CUDA 12.4 / CUDA 13.1 / Vulkan
+  - macOS arm64: Metal (CPU+GPU 同一二进制)
+  - macOS x64: CPU
+  - Ubuntu x64: CPU / Vulkan
+  - 其他 Linux: 需自行编译 llama.cpp 引擎
+
+模型等级 (仅 Q4_K_M):
+  T1 (tier 0): Qwen3-0.6B   ~0.5GB   CPU/任意设备
+  T2 (tier 1): Qwen3-1.7B   ~1.2GB   4GB+ 内存
+  T3 (tier 2): Qwen3-4B     ~2.7GB   6GB+ 显存
+  T4 (tier 3): Qwen3-8B     ~5GB     8GB+ 显存
+  T5 (tier 4): Qwen3-14B    ~9GB     10GB+ 显存 (RTX 3080)
+  T6 (tier 5): Qwen3-32B    ~19GB    24GB+ 显存 (RTX 4090)
+
+SetupWizard 配置引导流程:
+  1. 探测硬件 → 枚举所有可用计算后端 (Metal/CUDA/Vulkan/CPU)
+  2. 安装基准模型 (0.6B) + 逐个后端运行时
+  3. 逐个 benchmark → 自动选择最快后端
+  4. 展示模型选择列表（标注推荐+资源需求）→ 用户自选
+  5. 下载选定模型 → 启动服务

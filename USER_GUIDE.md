@@ -1,16 +1,15 @@
-<div align="center">
-
 # AiReader User Guide / 用户指南
 
-**Version 1.0.0** · PDF · EPUB · Markdown · TXT
+This guide has been split into separate language versions:
 
-[English](#english) | [中文](#中文)
-
-</div>
+- **[English](USER_GUIDE_EN.md)**
+- **[中文](USER_GUIDE_CN.md)**
 
 ---
 
-<a id="中文"></a>
+*Below is the legacy bilingual version kept for reference.*
+
+---
 
 ## 🇨🇳 中文用户指南
 
@@ -75,7 +74,7 @@
 
 1. **语言选择** — 选择中文或 English
 2. **存储路径** — 设置文档库目录和 AI 模型目录（可使用默认值）
-3. **AI 配置** — 一键配置内置 AI（硬件检测 → 基准测试 → 推荐模型 → 下载 → 启动），也可配置 Ollama 或 OpenAI 兼容 API
+3. **AI 配置** — 一键配置内置 AI（硬件检测 → 多引擎性能测试 → 展示模型列表 → 用户自选下载 → 启动），也可配置 Ollama 或 OpenAI 兼容 API
 
 引导完成后不会再次弹出。后续可在设置中修改所有配置。
 
@@ -201,22 +200,25 @@ PDF 和 EPUB 支持目录侧栏，两种打开方式：
 
 | 基准测试结果 | 推荐模型 |
 |:---|:---|
-| ≥ 100 tok/s | Qwen3-8B (T3) |
-| 50–99 tok/s | Qwen3-4B (T2) |
-| 20–49 tok/s | Qwen3-1.7B (T1) |
-| < 20 tok/s | Qwen3-0.6B (T0) |
+| ≥ 200 tok/s | Qwen3-32B (T6) |
+| 150–199 tok/s | Qwen3-14B (T5) |
+| ≥ 100 tok/s | Qwen3-8B (T4) |
+| 50–99 tok/s | Qwen3-4B (T3) |
+| 20–49 tok/s | Qwen3-1.7B (T2) |
+| < 20 tok/s | Qwen3-0.6B (T1) |
 
 **模型降级：** 如果觉得当前模型太慢，简易模式下有「降级到更小模型」按钮，一键切换。
 
-可用模型：
+可用模型（均为 Q4_K_M 量化）：
 
 | 模型 | 大小 | 说明 |
 |:---|:---|:---|
-| Qwen3-0.6B Q4 | ~400MB | 最小最快，适合低配电脑 |
-| Qwen3-1.7B Q4 | ~1GB | 轻量 |
-| Qwen3-4B Q4 | ~2.5GB | 均衡 |
-| Qwen3-8B Q4 | ~5GB | 高质量 |
-| Qwen3-8B Q5 | ~6GB | 最高质量 |
+| Qwen3-0.6B | ~0.5GB | 最小最快，适合低配电脑 |
+| Qwen3-1.7B | ~1.2GB | 轻量，4GB+ 内存 |
+| Qwen3-4B | ~2.7GB | 均衡，6GB+ 显存 |
+| Qwen3-8B | ~5GB | 高质量，8GB+ 显存 |
+| Qwen3-14B | ~9GB | 更高质量，10GB+ 显存 |
+| Qwen3-32B | ~19GB | 最高质量，24GB+ 显存 |
 
 **存储：** 文档缓存管理、应用数据目录、重置应用（清空所有数据回到初始状态）。
 
@@ -248,8 +250,8 @@ PDF 和 EPUB 支持目录侧栏，两种打开方式：
 **Q: 深度思考开关有什么用？**
 内置模型真正关闭/开启思考；Ollama 为软关闭（仍会思考但隐藏输出）。
 
-**Q: 支持哪些 GPU？**
-NVIDIA (CUDA 12.4/13.1)、AMD/Intel (Vulkan)、CPU 模式（所有电脑可用）。
+**Q: 支持哪些平台和 GPU？**
+Windows x64、macOS (arm64/x64)、Ubuntu x64。GPU 加速：NVIDIA (CUDA 12.4/13.1)、AMD/Intel (Vulkan)、Apple Silicon (Metal)、CPU 模式（所有电脑可用）。
 
 **Q: 集成显卡（Intel UHD）为什么不用 GPU 加速？**
 集成显卡显存通常 < 2GB，实测 GPU 加速反而比纯 CPU 慢。系统会自动检测并回退到 CPU 模式。
@@ -330,7 +332,7 @@ On first launch, a setup wizard guides you through three steps:
 
 1. **Language** — Choose Chinese or English
 2. **Storage Paths** — Set document library directory and AI model directory (defaults are fine)
-3. **AI Setup** — One-click built-in AI setup (hardware detection → benchmark → model download → start), or configure Ollama / OpenAI-compatible API
+3. **AI Setup** — One-click built-in AI setup (hardware detection → multi-engine benchmark → model selection list → user chooses → download → start), or configure Ollama / OpenAI-compatible API
 
 The wizard only appears once. All settings can be changed later.
 
@@ -456,22 +458,25 @@ Built-in AI provides **Simple Mode** (one-click setup) and **Advanced Mode** (ma
 
 | Benchmark Result | Recommended Model |
 |:---|:---|
-| ≥ 100 tok/s | Qwen3-8B (T3) |
-| 50–99 tok/s | Qwen3-4B (T2) |
-| 20–49 tok/s | Qwen3-1.7B (T1) |
-| < 20 tok/s | Qwen3-0.6B (T0) |
+| ≥ 200 tok/s | Qwen3-32B (T6) |
+| 150–199 tok/s | Qwen3-14B (T5) |
+| ≥ 100 tok/s | Qwen3-8B (T4) |
+| 50–99 tok/s | Qwen3-4B (T3) |
+| 20–49 tok/s | Qwen3-1.7B (T2) |
+| < 20 tok/s | Qwen3-0.6B (T1) |
 
 **Model Downgrade:** If the current model feels too slow, Simple Mode provides a "Downgrade to a smaller model" button for one-click switching.
 
-Available models:
+Available models (all Q4_K_M quantization):
 
 | Model | Size | Description |
 |:---|:---|:---|
-| Qwen3-0.6B Q4 | ~400MB | Smallest, fastest |
-| Qwen3-1.7B Q4 | ~1GB | Lightweight |
-| Qwen3-4B Q4 | ~2.5GB | Balanced |
-| Qwen3-8B Q4 | ~5GB | High quality |
-| Qwen3-8B Q5 | ~6GB | Highest quality |
+| Qwen3-0.6B | ~0.5GB | Smallest, fastest, any device |
+| Qwen3-1.7B | ~1.2GB | Lightweight, 4GB+ RAM |
+| Qwen3-4B | ~2.7GB | Balanced, 6GB+ VRAM |
+| Qwen3-8B | ~5GB | High quality, 8GB+ VRAM |
+| Qwen3-14B | ~9GB | Higher quality, 10GB+ VRAM |
+| Qwen3-32B | ~19GB | Highest quality, 24GB+ VRAM |
 
 **Storage:** Document cache management, app data directory, reset app (clears all data including config, documents, models, notes).
 
@@ -503,8 +508,8 @@ Import Copy copies the file to the app data folder (safe). Open Directly only re
 **Q: What does the Deep Thinking toggle do?**
 Built-in models truly disable/enable thinking. Ollama uses soft disable (still thinks internally but hides output).
 
-**Q: Which GPUs are supported?**
-NVIDIA (CUDA 12.4/13.1), AMD/Intel (Vulkan), CPU mode (works on all computers).
+**Q: Which platforms and GPUs are supported?**
+Windows x64, macOS (arm64/x64), Ubuntu x64. GPU acceleration: NVIDIA (CUDA 12.4/13.1), AMD/Intel (Vulkan), Apple Silicon (Metal), CPU mode (works on all computers).
 
 **Q: Why doesn't my integrated GPU (Intel UHD) use GPU acceleration?**
 Integrated GPUs typically have < 2GB VRAM. GPU acceleration is actually slower than pure CPU mode in this case. The system auto-detects and falls back to CPU mode.
