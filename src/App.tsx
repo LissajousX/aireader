@@ -17,7 +17,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { isSingleCJKWord, isSingleWord } from "@/services/dictionary";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useI18n } from "@/i18n";
-import { Menu, Moon, Sun, Sparkles, X } from "lucide-react";
+import { Menu, Moon, Sun, Sparkles, X, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import type { TextSelection, Document } from "@/types";
 
@@ -546,11 +546,21 @@ function App() {
         </>
       )}
       <main ref={mainRef} className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Sidebar expand button — welcome page only (document view uses Menu button in toolbar) */}
+        {!sidebarOpen && !currentDocument && (
+          <button
+            onClick={toggleSidebar}
+            className="absolute left-3 top-3 z-20 flex items-center justify-center w-8 h-8 rounded-lg bg-background/70 hover:bg-background/90 border border-border/50 hover:border-border backdrop-blur-md shadow-sm transition-all cursor-pointer group"
+            title={t('sidebar.show')}
+          >
+            <PanelLeftOpen className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </button>
+        )}
         {/* Floating toolbar for document view */}
         {currentDocument && (
           <div className="flex items-center justify-between px-2 py-1 border-b border-border/40 bg-background/80 backdrop-blur-sm z-10 flex-shrink-0">
             <div className="flex items-center gap-1 min-w-0">
-              <Button variant="outline" size="sm" className="h-7 px-2 flex-shrink-0 gap-1 border-border/60" onClick={toggleSidebar} title={sidebarOpen ? t('sidebar.hide') : t('sidebar.show')}>
+              <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0" onClick={toggleSidebar} title={sidebarOpen ? t('sidebar.hide') : t('sidebar.show')}>
                 <Menu className="w-4 h-4" />
               </Button>
               <span className="text-xs text-muted-foreground truncate max-w-[300px]" title={currentDocument.title}>

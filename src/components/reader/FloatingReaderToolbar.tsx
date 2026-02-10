@@ -283,7 +283,7 @@ export function FloatingReaderToolbar({
             className="h-7 w-7 inline-flex items-center justify-center rounded-full hover:bg-muted/50 transition-colors"
             title={readingMode === 'scrolled' ? b('切换到分页模式', 'Switch to paginated') : b('切换到滚动模式', 'Switch to scrolled')}
           >
-            {readingMode === 'scrolled' ? (
+            {readingMode === 'paginated' ? (
               <ScrollText className="w-4 h-4" />
             ) : (
               <Columns2 className="w-4 h-4" />

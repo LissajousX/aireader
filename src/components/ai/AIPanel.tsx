@@ -9,7 +9,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { cn } from "@/lib/utils";
 import { TRANSLATION_MODES } from "@/types";
 import type { TranslationMode, Note } from "@/types";
-import { streamGenerate, buildTranslatePrompt, buildExplainPrompt } from "@/services/ollamaStream";
+import { streamGenerate, buildTranslatePrompt, buildExplainPrompt, type ThinkingMode } from "@/services/ollamaStream";
 import { fetchOllamaModels, formatModelSize, type OllamaModel } from "@/services/ollamaApi";
 import { invoke, Channel } from "@tauri-apps/api/core";
 
@@ -57,19 +57,22 @@ export function AIPanel({ style }: AIPanelProps) {
     localStorage.setItem('aireader_ai_active_tab', tab);
   };
   const [translationMode, setTranslationMode] = useState<TranslationMode["type"]>("free");
-  const [useDeepThinking, setUseDeepThinking] = useState(() => {
-    const saved = localStorage.getItem('aireader_thinking_enabled');
-    if (saved === 'false') return false;
-    return true;
+  const [thinkingMode, setThinkingMode] = useState<ThinkingMode>(() => {
+    const saved = localStorage.getItem('aireader_thinking_mode');
+    if (saved === 'off' || saved === 'quick') return saved;
+    // Migrate from old values
+    const oldSaved = localStorage.getItem('aireader_thinking_enabled');
+    if (oldSaved === 'false') return 'off';
+    return 'quick';
   });
   const toggleThinking = () => {
-    setUseDeepThinking(prev => {
-      const next = !prev;
-      localStorage.setItem('aireader_thinking_enabled', String(next));
+    setThinkingMode(prev => {
+      const next: ThinkingMode = prev === 'off' ? 'quick' : 'off';
+      localStorage.setItem('aireader_thinking_mode', next);
       return next;
     });
   };
-  const thinkingEnabled = useDeepThinking;
+  const thinkingEnabled = thinkingMode !== 'off';
   const [inputText, setInputText] = useState("");
 
   // T4: Locked chat context — when user enters chat tab with selected text, lock it as context
@@ -344,7 +347,7 @@ export function AIPanel({ style }: AIPanelProps) {
         finishTask(key, taskId, finalContent, finalThinking, textToProcess);
       },
       onError: (error) => setError(key, taskId, error),
-    }, { enableThinking: thinkingEnabled, signal });
+    }, { thinkingMode, signal });
   };
 
   // 对话功能 - ChatGPT风格
@@ -494,7 +497,7 @@ export function AIPanel({ style }: AIPanelProps) {
         finishTask(key, taskId, finalContent, finalThinking, textToProcess);
       },
       onError: (error) => setError(key, taskId, error),
-    }, { enableThinking: thinkingEnabled, signal, messages });
+    }, { thinkingMode, signal, messages });
   };
 
   const handleExplain = async () => {
@@ -547,7 +550,7 @@ export function AIPanel({ style }: AIPanelProps) {
         finishTask(key, taskId, finalContent, finalThinking, textToProcess);
       },
       onError: (error) => setError(key, taskId, error),
-    }, { enableThinking: thinkingEnabled, signal });
+    }, { thinkingMode, signal });
   };
 
   const handleRegenerate = () => {
@@ -1134,7 +1137,7 @@ export function AIPanel({ style }: AIPanelProps) {
                   )}
                 >
                   <Brain className="w-3 h-3" />
-                  {t('深度思考', 'Deep Think')}
+                  {thinkingEnabled ? t('思考', 'Think') : t('不思考', 'Off')}
                 </button>
                 <button
                   onClick={clearChat}
@@ -1144,6 +1147,14 @@ export function AIPanel({ style }: AIPanelProps) {
                   {t('清空对话', 'Clear Chat')}
                 </button>
               </div>
+              {llmProvider === 'ollama' && ollamaModel?.toLowerCase().startsWith('qwen3:4b') && !thinkingEnabled && (
+                <div className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-1 rounded">
+                  {t(
+                    '⚠ qwen3:4b 关闭思考时仍可能输出思考内容且较慢',
+                    '⚠ qwen3:4b may still output thinking when disabled'
+                  )}
+                </div>
+              )}
               {/* 输入框和发送按钮 */}
               <div className="flex gap-2">
                 <div className="relative flex-1">
@@ -1241,10 +1252,10 @@ export function AIPanel({ style }: AIPanelProps) {
                     ? "bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30"
                     : "bg-muted text-muted-foreground border border-transparent"
                 )}
-                title={thinkingEnabled ? t('深度思考已开启', 'Deep thinking enabled') : t('深度思考已关闭', 'Deep thinking disabled')}
+                title={thinkingEnabled ? t('思考已开启', 'Thinking on') : t('思考已关闭', 'Thinking off')}
               >
                 <Brain className={cn("w-4 h-4", thinkingEnabled && "text-amber-500")} />
-                <span className="text-xs">{t('思考', 'Think')}</span>
+                <span className="text-xs">{thinkingEnabled ? t('思考', 'Think') : t('不思考', 'Off')}</span>
               </button>
               {activeContext?.isLoading ? (
                 <Button
@@ -1255,18 +1266,31 @@ export function AIPanel({ style }: AIPanelProps) {
                   <Square className="w-4 h-4 mr-2" />
                   {t('停止', 'Stop')}
                 </Button>
-              ) : (
-                <Button
-                  onClick={handleTabAction}
-                  className="flex-1"
-                  disabled={!inputText.trim()}
-                >
-                  {uiLanguage === 'en'
-                    ? `Start ${tabs.find((tb) => tb.id === activeTab)?.label}`
-                    : `开始${tabs.find((tb) => tb.id === activeTab)?.label}`}
-                </Button>
-              )}
+              ) : (() => {
+                const hasResult = !!(activeContext?.result && activeContext.result.originalText === inputText.trim());
+                const tabLabel = tabs.find((tb) => tb.id === activeTab)?.label ?? '';
+                return (
+                  <Button
+                    onClick={hasResult ? handleRegenerate : handleTabAction}
+                    className="flex-1"
+                    disabled={!inputText.trim()}
+                  >
+                    {hasResult
+                      ? (uiLanguage === 'en' ? `Redo ${tabLabel}` : `重新${tabLabel}`)
+                      : (uiLanguage === 'en' ? `Start ${tabLabel}` : `开始${tabLabel}`)}
+                  </Button>
+                );
+              })()}
             </div>
+
+            {llmProvider === 'ollama' && ollamaModel?.toLowerCase().startsWith('qwen3:4b') && !thinkingEnabled && (
+              <div className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-1.5 rounded-lg">
+                {t(
+                  '⚠ qwen3:4b 存在已知问题：关闭思考时仍可能输出思考内容，响应较慢。建议使用其他规格的模型。',
+                  '⚠ qwen3:4b has a known bug: disabling thinking may still produce slow responses. Consider using a different model size.'
+                )}
+              </div>
+            )}
 
             {activeContext?.error && (
               <div className="text-sm text-destructive bg-destructive/10 p-2 rounded-xl">

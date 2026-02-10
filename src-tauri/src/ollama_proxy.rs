@@ -70,24 +70,37 @@ pub async fn ollama_stream_chat(
     prompt: Option<String>,
     messages: Option<serde_json::Value>,
     think: Option<bool>,
+    options: Option<serde_json::Value>,
     on_chunk: Channel<OllamaStreamChunk>,
 ) -> Result<(), String> {
     use futures_util::StreamExt;
 
     let base = base_url.trim_end_matches('/');
-    let think_val = think.unwrap_or(false);
-    let (url, body) = if let Some(msgs) = messages {
-        (
-            format!("{}/api/chat", base),
-            serde_json::json!({ "model": model, "messages": msgs, "stream": true, "think": think_val }),
-        )
+    // think parameter: three states via Option<bool>
+    //   Some(true)  → send "think":true   (enable thinking)
+    //   Some(false) → send "think":false   (disable thinking, most models)
+    //   None        → omit "think" param   (for buggy models like qwen3:4b where
+    //                 think:false breaks; rely on /no_think prompt tag instead)
+    let (url, mut body) = if let Some(msgs) = messages {
+        let mut j = serde_json::json!({ "model": model, "messages": msgs, "stream": true });
+        if let Some(t) = think {
+            j.as_object_mut().unwrap().insert("think".to_string(), serde_json::json!(t));
+        }
+        (format!("{}/api/chat", base), j)
     } else {
         let p = prompt.unwrap_or_default();
-        (
-            format!("{}/api/generate", base),
-            serde_json::json!({ "model": model, "prompt": p, "stream": true, "think": think_val }),
-        )
+        let mut j = serde_json::json!({ "model": model, "prompt": p, "stream": true });
+        if let Some(t) = think {
+            j.as_object_mut().unwrap().insert("think".to_string(), serde_json::json!(t));
+        }
+        (format!("{}/api/generate", base), j)
     };
+    // Merge runtime options (e.g. temperature) into body
+    if let Some(opts) = options {
+        body.as_object_mut().unwrap().insert("options".to_string(), opts);
+    }
+
+    let body_str = serde_json::to_string(&body).unwrap();
 
     let client = Client::builder()
         .connect_timeout(std::time::Duration::from_secs(10))
@@ -97,15 +110,36 @@ pub async fn ollama_stream_chat(
     let resp = client
         .post(&url)
         .header("Content-Type", "application/json")
-        .body(serde_json::to_string(&body).unwrap())
+        .body(body_str)
         .send()
         .await
         .map_err(|e| format!("Ollama request failed: {}", e))?;
 
+    // If the model doesn't support thinking (HTTP 400 + "does not support thinking"),
+    // auto-retry without the think parameter so the user still gets a result.
+    let resp = if !resp.status().is_success() && resp.status().as_u16() == 400 {
+        let text = resp.text().await.unwrap_or_default();
+        if text.contains("does not support thinking") {
+            body.as_object_mut().unwrap().remove("think");
+            let retry_body = serde_json::to_string(&body).unwrap();
+            client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .body(retry_body)
+                .send()
+                .await
+                .map_err(|e| format!("Ollama retry failed: {}", e))?
+        } else {
+            return Err(format!("Ollama 返回错误 (HTTP 400): {}", text));
+        }
+    } else {
+        resp
+    };
+
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
-        return Err(format!("Ollama returned HTTP {} :: {}", status, text));
+        return Err(format!("Ollama 返回错误 (HTTP {}): {}", status, text));
     }
 
     let mut stream = resp.bytes_stream();

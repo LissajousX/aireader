@@ -6,7 +6,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { FloatingReaderToolbar } from "@/components/reader/FloatingReaderToolbar";
 import { ResizeHandle } from "@/components/ui/ResizeHandle";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { useI18n } from "@/i18n";
 import { getErrorMessage } from "@/lib/utils";
 
@@ -91,6 +91,99 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
   useEffect(() => {
     fallbackDisplayedRef.current = fallbackDisplayed;
   }, [fallbackDisplayed]);
+
+  // macOS WKWebView: epubjs "selected" event and content-hook-based listeners
+  // don't fire inside iframes. Use MutationObserver to detect live iframes and
+  // attach mouseup/dblclick directly on the actual iframe contentDocument.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+
+    const attachIframeListeners = (iframe: HTMLIFrameElement) => {
+      const tryAttach = () => {
+        try {
+          const doc = iframe.contentDocument;
+          const win = iframe.contentWindow;
+          if (!doc || !win) return;
+          if ((iframe as any).__aireader_sel_patched) return;
+          (iframe as any).__aireader_sel_patched = true;
+
+          // Text selection on mouseup (with delay for selection to finalize)
+          doc.addEventListener('mouseup', () => {
+            setTimeout(() => {
+              try {
+                const sel = win.getSelection?.() ?? doc.getSelection?.();
+                if (!sel || sel.rangeCount === 0 || !sel.toString().trim()) return;
+                const text = sel.toString().trim();
+                const range = sel.getRangeAt(0);
+                const rect = range.getBoundingClientRect();
+                const fr = iframe.getBoundingClientRect();
+                onTextSelectRef.current({
+                  text,
+                  pageNumber: 0,
+                  position: {
+                    x: (Number.isFinite(rect.x) ? rect.x : 0) + fr.left,
+                    y: (Number.isFinite(rect.y) ? rect.y : 0) + fr.top,
+                    width: rect.width,
+                    height: rect.height,
+                  },
+                });
+              } catch { /* ignore */ }
+            }, 30);
+          });
+
+          // Word lookup on dblclick (with delay for selection to finalize)
+          doc.addEventListener('dblclick', (e: MouseEvent) => {
+            setTimeout(() => {
+              try {
+                const sel = win.getSelection?.() ?? doc.getSelection?.();
+                const word = sel?.toString().trim() || '';
+                if (!word || /[\s\u00A0]/.test(word)) return;
+                const fr = iframe.getBoundingClientRect();
+                window.dispatchEvent(
+                  new CustomEvent('aireader-iframe-dblclick', {
+                    detail: {
+                      word,
+                      x: (Number.isFinite(e.clientX) ? e.clientX : 0) + fr.left,
+                      y: (Number.isFinite(e.clientY) ? e.clientY : 0) + fr.top,
+                    },
+                  })
+                );
+              } catch { /* ignore */ }
+            }, 10);
+          });
+        } catch { /* ignore */ }
+      };
+
+      // Try immediately, and retry on load in case document isn't ready yet
+      tryAttach();
+      iframe.addEventListener('load', tryAttach);
+    };
+
+    // Watch for new iframes being added by epubjs
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of Array.from(mutation.addedNodes)) {
+          if (node instanceof HTMLIFrameElement) {
+            attachIframeListeners(node);
+          }
+          if (node instanceof HTMLElement) {
+            for (const f of Array.from(node.querySelectorAll('iframe'))) {
+              attachIframeListeners(f);
+            }
+          }
+        }
+      }
+    });
+    observer.observe(viewer, { childList: true, subtree: true });
+
+    // Attach to any existing iframes
+    for (const f of Array.from(viewer.querySelectorAll('iframe'))) {
+      attachIframeListeners(f);
+    }
+
+    return () => observer.disconnect();
+  }, []);
 
   const normalizeHref = useMemo(() => {
     return (raw: unknown): string => {
@@ -991,6 +1084,7 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
           flow: 'paginated',
           spread: 'none',
           manager: 'default',
+          allowScriptedContent: true,
         });
 
         renditionRef.current = rendition;
@@ -1303,80 +1397,6 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
               };
 
               doc.addEventListener('wheel', onWheel, { passive: false });
-
-              // macOS WKWebView fallback: epubjs "selected" event may not fire inside iframes.
-              // Add a direct mouseup listener with delay to ensure selection is finalized.
-              const onMouseUp = () => {
-                setTimeout(() => {
-                  try {
-                    // Try multiple ways to get the selection — WKWebView may differ
-                    const sel = doc.getSelection?.()
-                      || doc.defaultView?.getSelection?.()
-                      || (contents?.window as Window | undefined)?.getSelection?.();
-                    if (!sel || sel.rangeCount === 0 || !sel.toString().trim()) return;
-                    const text = sel.toString().trim();
-                    const range = sel.getRangeAt(0);
-                    const rect = range.getBoundingClientRect();
-                    let x = rect.x;
-                    let y = rect.y;
-                    try {
-                      const frameEl = (contents?.window as Window | undefined)?.frameElement as HTMLElement | null
-                        || doc.defaultView?.frameElement as HTMLElement | null;
-                      if (frameEl && typeof frameEl.getBoundingClientRect === 'function') {
-                        const fr = frameEl.getBoundingClientRect();
-                        x = (Number.isFinite(x) ? x : 0) + fr.left;
-                        y = (Number.isFinite(y) ? y : 0) + fr.top;
-                      }
-                    } catch {}
-                    onTextSelectRef.current({
-                      text,
-                      pageNumber: 0,
-                      position: { x, y, width: rect.width, height: rect.height },
-                    });
-                  } catch {}
-                }, 20);
-              };
-              doc.addEventListener('mouseup', onMouseUp);
-
-              // macOS WKWebView fallback for dblclick word lookup:
-              // The spine hook's doc may be a temporary object replaced when injected into iframe.
-              // Re-register dblclick on the live iframe doc from the rendition content hook.
-              if (!(doc as any).__aireader_dblclick_rendition) {
-                (doc as any).__aireader_dblclick_rendition = true;
-                doc.addEventListener('dblclick', (e: Event) => {
-                  try {
-                    const me = e as MouseEvent;
-                    const clientX = me.clientX;
-                    const clientY = me.clientY;
-
-                    // Get selected word from selection or caret position
-                    const sel = doc.getSelection?.()
-                      || doc.defaultView?.getSelection?.()
-                      || (contents?.window as Window | undefined)?.getSelection?.();
-                    const selected = sel && typeof sel.toString === 'function' ? sel.toString().trim() : '';
-                    
-                    // If there's a clean single word/token from selection, use it
-                    const word = selected && !/[\s\u00A0]/.test(selected) ? selected : '';
-                    if (!word) return;
-
-                    let x = clientX;
-                    let y = clientY;
-                    try {
-                      const frameEl = (contents?.window as Window | undefined)?.frameElement as HTMLElement | null
-                        || doc.defaultView?.frameElement as HTMLElement | null;
-                      if (frameEl && typeof frameEl.getBoundingClientRect === 'function') {
-                        const fr = frameEl.getBoundingClientRect();
-                        x = (Number.isFinite(x) ? x : 0) + fr.left;
-                        y = (Number.isFinite(y) ? y : 0) + fr.top;
-                      }
-                    } catch {}
-
-                    window.dispatchEvent(
-                      new CustomEvent('aireader-iframe-dblclick', { detail: { word, x, y } })
-                    );
-                  } catch {}
-                });
-              }
             } catch {
               // ignore
             }
@@ -1766,27 +1786,6 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
       )}
 
       <div className="h-full w-full flex overflow-hidden">
-        {tocItems.length > 0 && !tocOpen && (
-          <button
-            type="button"
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-4 h-16 rounded-r-md bg-background/80 border border-l-0 border-border/60 shadow-sm backdrop-blur-sm flex items-center justify-center hover:bg-background hover:w-5 transition-all"
-            onClick={() => setTocOpen(true)}
-            title={b('打开目录', 'Open Contents')}
-          >
-            <ChevronRight className="w-3 h-3 text-muted-foreground" />
-          </button>
-        )}
-        {tocItems.length > 0 && tocOpen && (
-          <button
-            type="button"
-            className="absolute top-1/2 -translate-y-1/2 z-20 w-4 h-16 rounded-r-md bg-background/80 border border-l-0 border-border/60 shadow-sm backdrop-blur-sm flex items-center justify-center hover:bg-background hover:w-5 transition-all"
-            style={{ left: tocWidth }}
-            onClick={() => setTocOpen(false)}
-            title={b('收起目录', 'Close Contents')}
-          >
-            <ChevronLeft className="w-3 h-3 text-muted-foreground" />
-          </button>
-        )}
         {tocItems.length > 0 && (
           <div
             className={`shrink-0 bg-card/60 backdrop-blur overflow-hidden transition-[width] duration-200 ${
@@ -1796,8 +1795,18 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
           >
             {tocOpen && (
               <>
-                <div className="px-3 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border/60 bg-muted/30">
-                  {b('目录', 'Contents')}
+                <div className="flex items-center justify-between px-3 py-2 border-b border-border/60 bg-muted/30">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    {b('目录', 'Contents')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setTocOpen(false)}
+                    className="flex items-center justify-center w-6 h-6 rounded-md hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
+                    title={b('收起目录', 'Close Contents')}
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
                 </div>
                 <div ref={tocScrollRef} className="p-1.5 text-sm overflow-auto h-full">
                   {(() => {

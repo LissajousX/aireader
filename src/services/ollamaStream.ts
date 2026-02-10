@@ -13,13 +13,36 @@ interface ChatMessage {
   content: string;
 }
 
+export type ThinkingMode = 'off' | 'quick' | 'deep';
+
 interface StreamOptions {
   enableThinking?: boolean;
+  thinkingMode?: ThinkingMode;
   signal?: AbortSignal;
   messages?: ChatMessage[];
 }
 
-function resolveThinkingMode(prompt: string, defaultThinking: boolean): { thinking: boolean; promptToSend: string } {
+const CONCISE_THINKING_PROMPT = 'Think briefly and concisely. Focus on the task, avoid over-analysis. Respond directly.';
+
+// Qwen3 official best-practice sampling parameters (only applied to qwen3 models)
+const QWEN3_THINKING_OPTIONS = { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0 };
+const QWEN3_NOTHINK_OPTIONS  = { temperature: 0.7, top_p: 0.8,  top_k: 20, min_p: 0 };
+
+// Models where think:false is broken (leaks thinking into content field).
+// For these, we omit the think param entirely and rely on /no_think prompt tag.
+// See: https://github.com/ollama/ollama/issues/12917
+const THINK_FALSE_BUGGY_MODELS = ['qwen3:4b'];
+
+function isThinkFalseBuggy(model: string): boolean {
+  const m = model.toLowerCase();
+  return THINK_FALSE_BUGGY_MODELS.some(b => m.startsWith(b));
+}
+
+function isQwen3Model(model: string): boolean {
+  return model.toLowerCase().startsWith('qwen3');
+}
+
+function resolveThinkingMode(prompt: string, mode: ThinkingMode): { thinking: boolean; mode: ThinkingMode; promptToSend: string } {
   const re = /\/(think|no_think)\b/g;
   let last: "think" | "no_think" | null = null;
   let m: RegExpExecArray | null;
@@ -28,15 +51,15 @@ function resolveThinkingMode(prompt: string, defaultThinking: boolean): { thinki
   }
 
   if (last === "think") {
-    return { thinking: true, promptToSend: prompt };
+    return { thinking: true, mode: mode === 'off' ? 'deep' : mode, promptToSend: prompt };
   }
   if (last === "no_think") {
-    return { thinking: false, promptToSend: prompt };
+    return { thinking: false, mode: 'off', promptToSend: prompt };
   }
-  if (!defaultThinking) {
-    return { thinking: false, promptToSend: `${prompt} /no_think` };
+  if (mode === 'off') {
+    return { thinking: false, mode: 'off', promptToSend: `${prompt} /no_think` };
   }
-  return { thinking: true, promptToSend: prompt };
+  return { thinking: true, mode, promptToSend: prompt };
 }
 
 export async function streamGenerate(
@@ -47,8 +70,8 @@ export async function streamGenerate(
   try {
     const settings = useSettingsStore.getState();
     const provider = settings.llmProvider;
-    const enableThinking = options?.enableThinking ?? settings.enableThinking;
-    const thinkingResolved = resolveThinkingMode(prompt, enableThinking);
+    const thinkMode: ThinkingMode = options?.thinkingMode ?? (options?.enableThinking === false ? 'off' : options?.enableThinking === true ? 'deep' : (settings.enableThinking ? 'deep' : 'off'));
+    const thinkingResolved = resolveThinkingMode(prompt, thinkMode);
 
     let response!: Response;
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
@@ -70,19 +93,28 @@ export async function streamGenerate(
       // For builtin model: use both API param AND prompt-level tag for maximum compatibility.
       // Some llama-server builds ignore enable_thinking, so /think or /no_think in prompt ensures correct behavior.
       const thinkTag = builtinThinking ? ' /think' : ' /no_think';
-      const builtinMessages: ChatMessage[] = options?.messages
+      let builtinMessages: ChatMessage[] = options?.messages
         ? options.messages.map((m, i, arr) =>
             i === arr.length - 1 && m.role === 'user' && !m.content.includes('/think') && !m.content.includes('/no_think')
               ? { ...m, content: m.content + thinkTag }
               : m
           )
         : [{ role: 'user', content: prompt.includes('/think') || prompt.includes('/no_think') ? prompt : prompt + thinkTag }];
+      // Inject concise thinking prompt for 'quick' mode
+      if (thinkingResolved.mode === 'quick' && !builtinMessages.some(m => m.role === 'system')) {
+        builtinMessages = [{ role: 'system', content: CONCISE_THINKING_PROMPT }, ...builtinMessages];
+      }
       // T3: Retry with backoff for 503 (model still loading after auto_start)
+      // Apply Qwen3 official sampling parameters
+      const samplingParams = builtinThinking
+        ? { temperature: 0.6, top_p: 0.95, top_k: 20, min_p: 0 }
+        : { temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0 };
       const requestBody = JSON.stringify({
         model: settings.builtinModelId,
         messages: builtinMessages,
         stream: true,
         enable_thinking: builtinThinking,
+        ...samplingParams,
       });
       const maxRetries = 6;
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -234,6 +266,12 @@ export async function streamGenerate(
         throw new Error('OpenAI-Compatible Model 不能为空');
       }
 
+      // Inject concise thinking prompt for 'quick' mode
+      let oaiMessages: ChatMessage[] = options?.messages || [{ role: 'user', content: prompt }];
+      if (thinkingResolved.mode === 'quick' && !oaiMessages.some(m => m.role === 'system')) {
+        oaiMessages = [{ role: 'system', content: CONCISE_THINKING_PROMPT }, ...oaiMessages];
+      }
+
       response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -243,7 +281,7 @@ export async function streamGenerate(
         signal: options?.signal,
         body: JSON.stringify({
           model: modelName,
-          messages: options?.messages || [{ role: 'user', content: prompt }],
+          messages: oaiMessages,
           stream: true,
         }),
       });
@@ -292,7 +330,7 @@ export async function streamGenerate(
             const contentDelta = delta?.content;
             const reasoningDelta = delta?.reasoning ?? delta?.thinking;
 
-            if (enableThinking && typeof reasoningDelta === 'string' && reasoningDelta) {
+            if (thinkingResolved.thinking && typeof reasoningDelta === 'string' && reasoningDelta) {
               thinkingContent += reasoningDelta;
               callbacks.onThinking?.(thinkingContent);
             }
@@ -323,36 +361,44 @@ export async function streamGenerate(
     const finalPrompt = thinkingResolved.promptToSend;
     const useChat = !!(options?.messages && options.messages.length > 0);
 
-    // Use Rust backend proxy to bypass WebView CORS restrictions
+    // ALWAYS use /api/chat (messages format) for Ollama.
+    // /api/generate does not reliably support think:false, causing thinking content to leak into results.
+    const baseMsgs: ChatMessage[] = useChat
+      ? options!.messages!
+      : [{ role: 'user' as const, content: finalPrompt }];
+
+    // When thinking is enabled, inject concise system prompt to reduce verbose reasoning.
+    const needSystemPrompt = thinkingResolved.thinking && !baseMsgs.some(m => m.role === 'system');
+    const ollamaMsgs: ChatMessage[] = needSystemPrompt
+      ? [{ role: 'system' as const, content: CONCISE_THINKING_PROMPT }, ...baseMsgs]
+      : baseMsgs;
+
+    // Determine think param for Ollama:
+    //   thinking ON  → think: true
+    //   thinking OFF + normal model → think: false (fast, truly disables thinking)
+    //   thinking OFF + buggy model  → think: undefined (Rust sends None → omits param,
+    //     relies on /no_think prompt tag; model still thinks but content stays clean)
+    const isBuggy = isThinkFalseBuggy(modelName);
+    let thinkParam: boolean | undefined;
+    if (thinkingResolved.thinking) {
+      thinkParam = true;
+    } else {
+      thinkParam = isBuggy ? undefined : false;
+    }
+
+    // Qwen3 sampling params only for qwen3 models; other models get no extra options
+    const isQwen3 = isQwen3Model(modelName);
+    const ollamaOptions = isQwen3
+      ? (thinkingResolved.thinking ? QWEN3_THINKING_OPTIONS : QWEN3_NOTHINK_OPTIONS)
+      : undefined;
+
     let doneCalled = false;
     const onChunk = new Channel<{ kind: string; text: string }>();
     onChunk.onmessage = (msg) => {
       if (msg.kind === 'thinking') {
         if (thinkingResolved.thinking) callbacks.onThinking?.(msg.text);
       } else if (msg.kind === 'content') {
-        // Ollama models (e.g. qwen3) may embed <think>...</think> in content
-        // even when think:false. Parse and strip/route these blocks.
-        const raw = msg.text; // accumulated content
-        const thinkStart = raw.indexOf('<think>');
-        if (thinkStart < 0) {
-          // No think block — pass through
-          callbacks.onContent?.(raw);
-        } else {
-          const thinkEnd = raw.indexOf('</think>');
-          if (thinkEnd >= 0) {
-            // Complete think block found
-            if (thinkingResolved.thinking) {
-              callbacks.onThinking?.(raw.substring(thinkStart + 7, thinkEnd));
-            }
-            const mainContent = (raw.substring(0, thinkStart) + raw.substring(thinkEnd + 8)).trimStart();
-            if (mainContent) callbacks.onContent?.(mainContent);
-          } else {
-            // Incomplete think block — still thinking, don't emit content yet
-            if (thinkingResolved.thinking) {
-              callbacks.onThinking?.(raw.substring(thinkStart + 7));
-            }
-          }
-        }
+        callbacks.onContent?.(msg.text);
       } else if (msg.kind === 'done' && !doneCalled) {
         doneCalled = true;
         callbacks.onDone?.();
@@ -362,9 +408,10 @@ export async function streamGenerate(
     await invoke('ollama_stream_chat', {
       baseUrl: settings.ollamaUrl,
       model: modelName,
-      prompt: useChat ? null : finalPrompt,
-      messages: useChat ? options!.messages : null,
-      think: thinkingResolved.thinking,
+      prompt: null,
+      messages: ollamaMsgs,
+      think: thinkParam,
+      options: ollamaOptions,
       onChunk,
     });
 
@@ -375,7 +422,8 @@ export async function streamGenerate(
     if (error instanceof DOMException && error.name === "AbortError") {
       return;
     }
-    callbacks.onError?.(error instanceof Error ? error.message : "未知错误");
+    const errMsg = error instanceof Error ? error.message : (typeof error === 'string' ? error : '未知错误');
+    callbacks.onError?.(errMsg);
   }
 }
 
