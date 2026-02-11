@@ -204,7 +204,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   markdownScale: (() => {
     const raw = localStorage.getItem('markdown_scale');
     const v = raw ? Number.parseFloat(raw) : NaN;
-    return Number.isFinite(v) ? v : 0.85;
+    return Number.isFinite(v) ? v : 0.75;
   })(),
   prompts: { ...DEFAULT_PROMPTS },
   builtinDownloadUrls: {},
@@ -253,7 +253,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     applyTheme(theme);
   },
   setEnableThinking: (enabled) => set({ enableThinking: enabled }),
-  setMarkdownScale: (scale) => set({ markdownScale: Math.max(0.8, Math.min(1.2, scale)) }),
+  setMarkdownScale: (scale) => set({ markdownScale: Math.max(0.6, Math.min(1.2, scale)) }),
   
   setPrompt: (key, value) => set((state) => ({
     prompts: { ...state.prompts, [key]: value }

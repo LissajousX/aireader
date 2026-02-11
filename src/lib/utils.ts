@@ -14,8 +14,10 @@ export function getErrorMessage(error: unknown): string {
     if (typeof anyErr.error === "string" && anyErr.error.trim()) return anyErr.error;
   }
   try {
-    return JSON.stringify(error);
+    const json = JSON.stringify(error);
+    if (typeof json === "string") return json;
   } catch {
-    return String(error);
+    // fall through
   }
+  return String(error);
 }

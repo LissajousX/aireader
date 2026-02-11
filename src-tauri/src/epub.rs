@@ -190,6 +190,92 @@ fn epub_extract_sync(documents_dir: PathBuf, path: String) -> Result<String, Str
     Ok(opf_abs.to_string_lossy().to_string())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clean_rel_path_normal() {
+        let p = clean_rel_path("OEBPS/content.opf");
+        assert_eq!(p, Some(PathBuf::from("OEBPS/content.opf")));
+    }
+
+    #[test]
+    fn test_clean_rel_path_backslash() {
+        let p = clean_rel_path("OEBPS\\chapter1.xhtml");
+        assert_eq!(p, Some(PathBuf::from("OEBPS/chapter1.xhtml")));
+    }
+
+    #[test]
+    fn test_clean_rel_path_curdir() {
+        let p = clean_rel_path("./OEBPS/content.opf");
+        assert_eq!(p, Some(PathBuf::from("OEBPS/content.opf")));
+    }
+
+    #[test]
+    fn test_clean_rel_path_parent_dir_rejected() {
+        // Path traversal should be rejected
+        assert_eq!(clean_rel_path("../etc/passwd"), None);
+        assert_eq!(clean_rel_path("OEBPS/../../secret"), None);
+    }
+
+    #[test]
+    fn test_clean_rel_path_empty() {
+        assert_eq!(clean_rel_path(""), None);
+    }
+
+    #[test]
+    fn test_clean_rel_path_root_rejected() {
+        assert_eq!(clean_rel_path("/absolute/path"), None);
+    }
+
+    #[test]
+    fn test_parse_container_for_opf_standard() {
+        let xml = r#"<?xml version="1.0"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"#;
+        assert_eq!(parse_container_for_opf(xml), Some("OEBPS/content.opf".to_string()));
+    }
+
+    #[test]
+    fn test_parse_container_for_opf_single_quotes() {
+        let xml = "<rootfile full-path='book/package.opf' media-type='application/oebps-package+xml'/>";
+        assert_eq!(parse_container_for_opf(xml), Some("book/package.opf".to_string()));
+    }
+
+    #[test]
+    fn test_parse_container_for_opf_missing() {
+        let xml = "<container><rootfiles></rootfiles></container>";
+        assert_eq!(parse_container_for_opf(xml), None);
+    }
+
+    #[test]
+    fn test_parse_container_for_opf_empty_value() {
+        let xml = r#"<rootfile full-path="" media-type="application/oebps-package+xml"/>"#;
+        assert_eq!(parse_container_for_opf(xml), None);
+    }
+
+    #[test]
+    fn test_hash_key_deterministic() {
+        let k1 = hash_key("/path/to/book.epub", 12345, 67890);
+        let k2 = hash_key("/path/to/book.epub", 12345, 67890);
+        assert_eq!(k1, k2);
+        assert_eq!(k1.len(), 16); // 16 hex chars
+    }
+
+    #[test]
+    fn test_hash_key_changes_with_input() {
+        let k1 = hash_key("/a.epub", 100, 1);
+        let k2 = hash_key("/b.epub", 100, 1);
+        let k3 = hash_key("/a.epub", 200, 1);
+        assert_ne!(k1, k2);
+        assert_ne!(k1, k3);
+    }
+}
+
 /// 异步EPUB解压命令 - 在后台线程执行，不阻塞主线程
 #[tauri::command]
 pub async fn epub_extract(state: State<'_, AppState>, path: String) -> Result<String, String> {

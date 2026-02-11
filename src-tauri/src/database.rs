@@ -159,6 +159,145 @@ impl Database {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    fn make_db() -> Database {
+        let n = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!(
+            "aireader_test_{}_{}", std::process::id(), n
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        Database::new(dir).expect("failed to create test db")
+    }
+
+    fn sample_note(id: &str, doc_id: &str) -> NoteData {
+        NoteData {
+            id: id.to_string(),
+            document_id: doc_id.to_string(),
+            note_type: "ai_generated".to_string(),
+            content: "Test note content".to_string(),
+            original_text: Some("original text".to_string()),
+            page_number: Some(1),
+            position_data: None,
+            ai_confirmed: false,
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            updated_at: "2025-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_save_and_get_note() {
+        let db = make_db();
+        let note = sample_note("n1", "doc1");
+        db.save_note(&note).unwrap();
+
+        let notes = db.get_notes_by_document("doc1").unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].id, "n1");
+        assert_eq!(notes[0].content, "Test note content");
+        assert_eq!(notes[0].original_text, Some("original text".to_string()));
+    }
+
+    #[test]
+    fn test_get_notes_empty() {
+        let db = make_db();
+        let notes = db.get_notes_by_document("nonexistent").unwrap();
+        assert!(notes.is_empty());
+    }
+
+    #[test]
+    fn test_get_all_notes() {
+        let db = make_db();
+        db.save_note(&sample_note("n1", "doc1")).unwrap();
+        db.save_note(&sample_note("n2", "doc2")).unwrap();
+        db.save_note(&sample_note("n3", "doc1")).unwrap();
+
+        let all = db.get_all_notes().unwrap();
+        assert_eq!(all.len(), 3);
+    }
+
+    #[test]
+    fn test_delete_note() {
+        let db = make_db();
+        db.save_note(&sample_note("n1", "doc1")).unwrap();
+        db.delete_note("n1").unwrap();
+
+        let notes = db.get_notes_by_document("doc1").unwrap();
+        assert!(notes.is_empty());
+    }
+
+    #[test]
+    fn test_delete_nonexistent_note() {
+        let db = make_db();
+        // Should not error
+        db.delete_note("nonexistent").unwrap();
+    }
+
+    #[test]
+    fn test_update_note_confirmed() {
+        let db = make_db();
+        db.save_note(&sample_note("n1", "doc1")).unwrap();
+
+        db.update_note_confirmed("n1", true).unwrap();
+        let notes = db.get_notes_by_document("doc1").unwrap();
+        assert!(notes[0].ai_confirmed);
+
+        db.update_note_confirmed("n1", false).unwrap();
+        let notes = db.get_notes_by_document("doc1").unwrap();
+        assert!(!notes[0].ai_confirmed);
+    }
+
+    #[test]
+    fn test_save_note_upsert() {
+        let db = make_db();
+        let mut note = sample_note("n1", "doc1");
+        db.save_note(&note).unwrap();
+
+        note.content = "Updated content".to_string();
+        db.save_note(&note).unwrap();
+
+        let notes = db.get_notes_by_document("doc1").unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].content, "Updated content");
+    }
+
+    #[test]
+    fn test_reassign_notes_document() {
+        let db = make_db();
+        db.save_note(&sample_note("n1", "old_doc")).unwrap();
+        db.save_note(&sample_note("n2", "old_doc")).unwrap();
+        db.save_note(&sample_note("n3", "other_doc")).unwrap();
+
+        let count = db.reassign_notes_document("old_doc", "new_doc").unwrap();
+        assert_eq!(count, 2);
+
+        let old = db.get_notes_by_document("old_doc").unwrap();
+        assert!(old.is_empty());
+
+        let new = db.get_notes_by_document("new_doc").unwrap();
+        assert_eq!(new.len(), 2);
+
+        let other = db.get_notes_by_document("other_doc").unwrap();
+        assert_eq!(other.len(), 1);
+    }
+
+    #[test]
+    fn test_clear_all() {
+        let db = make_db();
+        db.save_note(&sample_note("n1", "doc1")).unwrap();
+        db.save_note(&sample_note("n2", "doc2")).unwrap();
+        db.clear_all().unwrap();
+
+        let all = db.get_all_notes().unwrap();
+        assert!(all.is_empty());
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NoteData {
     pub id: String,

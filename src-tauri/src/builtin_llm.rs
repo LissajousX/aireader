@@ -2546,3 +2546,203 @@ pub async fn builtin_llm_benchmark(
         recommended_model_id,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    // ── normalize helpers ──
+
+    #[test]
+    fn test_normalize_cuda_version() {
+        assert_eq!(normalize_cuda_version(Some("13.1")), "13.1");
+        assert_eq!(normalize_cuda_version(Some("12.4")), "12.4");
+        assert_eq!(normalize_cuda_version(None), "12.4");
+        assert_eq!(normalize_cuda_version(Some("xyz")), "12.4");
+    }
+
+    #[test]
+    fn test_normalize_compute_mode() {
+        assert_eq!(normalize_compute_mode(Some("gpu")), "gpu");
+        assert_eq!(normalize_compute_mode(Some("hybrid")), "hybrid");
+        assert_eq!(normalize_compute_mode(Some("cpu")), "cpu");
+        assert_eq!(normalize_compute_mode(None), "cpu");
+        assert_eq!(normalize_compute_mode(Some("unknown")), "cpu");
+    }
+
+    #[test]
+    fn test_normalize_gpu_backend() {
+        assert_eq!(normalize_gpu_backend(Some("cuda")), "cuda");
+        assert_eq!(normalize_gpu_backend(Some("CUDA")), "cuda");
+        assert_eq!(normalize_gpu_backend(Some("metal")), "metal");
+        assert_eq!(normalize_gpu_backend(Some("Metal")), "metal");
+        // Default depends on platform
+        #[cfg(target_os = "macos")]
+        assert_eq!(normalize_gpu_backend(None), "metal");
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(normalize_gpu_backend(None), "vulkan");
+    }
+
+    // ── sanitize_model_id ──
+
+    #[test]
+    fn test_sanitize_model_id_valid() {
+        assert_eq!(sanitize_model_id(Some("qwen3_0_6b_q4_k_m".into())), "qwen3_0_6b_q4_k_m");
+        assert_eq!(sanitize_model_id(Some("my-model.v2".into())), "my-model.v2");
+    }
+
+    #[test]
+    fn test_sanitize_model_id_empty() {
+        assert_eq!(sanitize_model_id(None), "qwen3_0_6b_q4_k_m");
+        assert_eq!(sanitize_model_id(Some("".into())), "qwen3_0_6b_q4_k_m");
+        assert_eq!(sanitize_model_id(Some("   ".into())), "qwen3_0_6b_q4_k_m");
+    }
+
+    #[test]
+    fn test_sanitize_model_id_special_chars() {
+        // Special chars replaced with _
+        let result = sanitize_model_id(Some("model@v1!".into()));
+        assert!(!result.contains('@'));
+        assert!(!result.contains('!'));
+    }
+
+    #[test]
+    fn test_sanitize_model_id_truncates_long() {
+        let long = "a".repeat(200);
+        let result = sanitize_model_id(Some(long));
+        assert!(result.len() <= 80);
+    }
+
+    // ── is_builtin_qwen3_model_id ──
+
+    #[test]
+    fn test_is_builtin_qwen3_model_id() {
+        assert!(is_builtin_qwen3_model_id("qwen3_0_6b_q4_k_m"));
+        assert!(is_builtin_qwen3_model_id("qwen3_32b_q4_k_m"));
+        assert!(!is_builtin_qwen3_model_id("custom_model"));
+        assert!(!is_builtin_qwen3_model_id(""));
+    }
+
+    // ── model_file_name ──
+
+    #[test]
+    fn test_model_file_name() {
+        assert_eq!(model_file_name("qwen3_0_6b_q4_k_m"), "Qwen3-0.6B-Q4_K_M.gguf");
+        assert_eq!(model_file_name("qwen3_8b_q4_k_m"), "Qwen3-8B-Q4_K_M.gguf");
+        assert_eq!(model_file_name("qwen3_32b_q4_k_m"), "Qwen3-32B-Q4_K_M.gguf");
+        // Unknown falls back to 0.6B
+        assert_eq!(model_file_name("unknown"), "Qwen3-0.6B-Q4_K_M.gguf");
+    }
+
+    // ── legacy_model_file_name ──
+
+    #[test]
+    fn test_legacy_model_file_name() {
+        assert_eq!(legacy_model_file_name("q8_0"), Some("Qwen3-Embedding-0.6B-Q8_0.gguf"));
+        assert_eq!(legacy_model_file_name("qwen3_0_6b_q4_k_m"), None);
+    }
+
+    // ── model_urls ──
+
+    #[test]
+    fn test_model_urls_known() {
+        let urls = model_urls("qwen3_0_6b_q4_k_m");
+        assert!(urls[0].contains("modelscope"));
+        assert!(urls[1].contains("huggingface"));
+        assert!(urls[0].ends_with(".gguf"));
+        assert!(urls[1].ends_with(".gguf"));
+    }
+
+    #[test]
+    fn test_model_urls_unknown() {
+        let urls = model_urls("nonexistent");
+        assert!(urls[0].is_empty());
+    }
+
+    // ── model_file_path ──
+
+    #[test]
+    fn test_model_file_path_builtin() {
+        let dir = Path::new("/models");
+        let p = model_file_path(dir, "qwen3_8b_q4_k_m");
+        assert_eq!(p, dir.join("Qwen3-8B-Q4_K_M.gguf"));
+    }
+
+    #[test]
+    fn test_model_file_path_custom() {
+        let dir = Path::new("/models");
+        let p = model_file_path(dir, "my_custom_model");
+        assert_eq!(p, dir.join("my_custom_model.gguf"));
+    }
+
+    #[test]
+    fn test_model_file_path_strips_gguf_extension() {
+        let dir = Path::new("/models");
+        let p = model_file_path(dir, "custom.gguf");
+        assert_eq!(p, dir.join("custom.gguf"));
+    }
+
+    // ── model_candidate_paths ──
+
+    #[test]
+    fn test_model_candidate_paths_builtin() {
+        let dir = Path::new("/m");
+        let paths = model_candidate_paths(dir, "qwen3_0_6b_q4_k_m");
+        assert_eq!(paths.len(), 1); // no legacy for this id
+        assert_eq!(paths[0], dir.join("Qwen3-0.6B-Q4_K_M.gguf"));
+    }
+
+    #[test]
+    fn test_model_candidate_paths_legacy() {
+        let dir = Path::new("/m");
+        let paths = model_candidate_paths(dir, "q8_0");
+        assert_eq!(paths.len(), 2);
+        assert!(paths[1].to_string_lossy().contains("Q8_0"));
+    }
+
+    // ── model_id_from_path ──
+
+    #[test]
+    fn test_model_id_from_path_builtin() {
+        let dir = Path::new("/models");
+        let path = dir.join("Qwen3-8B-Q4_K_M.gguf");
+        assert_eq!(model_id_from_path(dir, &path), Some("qwen3_8b_q4_k_m".to_string()));
+    }
+
+    #[test]
+    fn test_model_id_from_path_custom() {
+        let dir = Path::new("/models");
+        let path = dir.join("my_custom.gguf");
+        let result = model_id_from_path(dir, &path);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), "my_custom");
+    }
+
+    // ── runtime_dir ──
+
+    #[test]
+    fn test_runtime_dir_cpu() {
+        let llm = Path::new("/llm");
+        assert_eq!(runtime_dir(llm, "cpu", "vulkan", "12.4"), llm.join("runtime/cpu"));
+    }
+
+    #[test]
+    fn test_runtime_dir_gpu_cuda() {
+        let llm = Path::new("/llm");
+        assert_eq!(runtime_dir(llm, "gpu", "cuda", "12.4"), llm.join("runtime/cuda-12.4"));
+        assert_eq!(runtime_dir(llm, "gpu", "cuda", "13.1"), llm.join("runtime/cuda-13.1"));
+    }
+
+    #[test]
+    fn test_runtime_dir_gpu_vulkan() {
+        let llm = Path::new("/llm");
+        assert_eq!(runtime_dir(llm, "gpu", "vulkan", "12.4"), llm.join("runtime/vulkan"));
+    }
+
+    #[test]
+    fn test_runtime_dir_gpu_metal() {
+        let llm = Path::new("/llm");
+        assert_eq!(runtime_dir(llm, "hybrid", "metal", "12.4"), llm.join("runtime/metal"));
+    }
+}
