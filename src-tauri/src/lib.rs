@@ -392,6 +392,40 @@ fn open_devtools(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("Only http/https URLs are allowed".to_string());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_app_version(app: AppHandle) -> Result<String, String> {
+    Ok(app.config().version.clone().unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()))
+}
+
+#[tauri::command]
 fn get_app_data_dir(state: State<AppState>) -> Result<String, String> {
     Ok(state.app_data_dir.to_string_lossy().to_string())
 }
@@ -927,6 +961,8 @@ pub fn run() {
             reassign_notes_document,
             append_log,
             open_devtools,
+            open_external_url,
+            get_app_version,
             get_app_data_dir,
             get_documents_dir,
             get_app_config,

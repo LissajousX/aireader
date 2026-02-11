@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Markdown } from "@/components/ui/Markdown";
@@ -6,6 +6,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { useI18n } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { LayoutDiagram } from "@/components/help/LayoutDiagram";
+import { invoke } from "@tauri-apps/api/core";
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -14,7 +15,7 @@ interface HelpModalProps {
 
 const GUIDE_ZH = `# AiReader 用户指南
 
-> **版本**: 1.0.0　|　**支持格式**: PDF · EPUB · Markdown · TXT
+> **版本**: {{VERSION}}　|　**支持格式**: PDF · EPUB · Markdown · TXT
 
 ---
 
@@ -191,12 +192,12 @@ PDF 和 EPUB 文档支持目录侧栏。
 
 | 基准测试 | 推荐 |
 |---|---|
-| ≥200 tok/s | T6 (32B) |
-| 150–199 | T5 (14B) |
-| ≥100 | T4 (8B) |
-| 50–99 | T3 (4B) |
-| 20–49 | T2 (1.7B) |
-| <20 | T1 (0.6B) |
+| ≥420 tok/s | T5 (32B) |
+| 185–419 | T4 (14B) |
+| 100–184 | T3 (8B) |
+| 50–99 | T2 (4B) |
+| 20–49 | T1 (1.7B) |
+| <20 | T0 (0.6B) |
 
 可用模型（均为 Q4_K_M 量化）：Qwen3-0.6B (~0.5GB) / 1.7B (~1.2GB) / 4B (~2.7GB) / 8B (~5GB) / 14B (~9GB) / 32B (~19GB)。
 
@@ -252,7 +253,7 @@ PDF 和 EPUB 文档支持目录侧栏。
 
 const GUIDE_EN = `# AiReader User Guide
 
-> **Version**: 1.0.0　|　**Supported Formats**: PDF · EPUB · Markdown · TXT
+> **Version**: {{VERSION}}　|　**Supported Formats**: PDF · EPUB · Markdown · TXT
 
 ---
 
@@ -429,12 +430,12 @@ All settings take effect immediately — no save button needed.
 
 | Benchmark | Recommendation |
 |---|---|
-| ≥200 tok/s | T6 (32B) |
-| 150–199 | T5 (14B) |
-| ≥100 | T4 (8B) |
-| 50–99 | T3 (4B) |
-| 20–49 | T2 (1.7B) |
-| <20 | T1 (0.6B) |
+| ≥420 tok/s | T5 (32B) |
+| 185–419 | T4 (14B) |
+| 100–184 | T3 (8B) |
+| 50–99 | T2 (4B) |
+| 20–49 | T1 (1.7B) |
+| <20 | T0 (0.6B) |
 
 Available models (all Q4_K_M): Qwen3-0.6B (~0.5GB) / 1.7B (~1.2GB) / 4B (~2.7GB) / 8B (~5GB) / 14B (~9GB) / 32B (~19GB).
 
@@ -494,11 +495,18 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
   const uiLanguage = useSettingsStore((s) => s.uiLanguage);
   const [searchQuery, setSearchQuery] = useState('');
   const [guideLang, setGuideLang] = useState<'zh' | 'en' | null>(null);
+  const [appVersion, setAppVersion] = useState('');
+
+  useEffect(() => {
+    if (isOpen && !appVersion) {
+      invoke<string>('get_app_version').then(v => setAppVersion(v)).catch(() => setAppVersion(''));
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const activeLang = guideLang ?? uiLanguage;
-  const guideContent = activeLang === 'en' ? GUIDE_EN : GUIDE_ZH;
+  const guideContent = (activeLang === 'en' ? GUIDE_EN : GUIDE_ZH).replace('{{VERSION}}', appVersion || '…');
 
   const filteredGuide = searchQuery.trim()
     ? guideContent.split('\n').filter((line) => {

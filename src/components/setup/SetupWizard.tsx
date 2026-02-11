@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ChevronRight, ChevronLeft, Sparkles, Check, Loader2, Zap, BookOpen, ChevronDown, Globe, Server, CheckCircle, Wifi, Award, AlertTriangle, HardDrive, Cpu } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -46,6 +46,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [recommendedTier, setRecommendedTier] = useState<number>(0);
   const [recommendedModelId, setRecommendedModelId] = useState<string>('qwen3_0_6b_q4_k_m');
   const [selectedModelId, setSelectedModelId] = useState<string>('qwen3_0_6b_q4_k_m');
+  const cancelledRef = useRef(false);
 
   // Load current paths from backend
   useEffect(() => {
@@ -133,7 +134,17 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     return candidates;
   };
 
+  const cancelSetup = async () => {
+    cancelledRef.current = true;
+    setLoading(false);
+    setAiStep(null);
+    setDownloadProgress(null);
+    setBenchPhase('idle');
+    try { await invoke('builtin_llm_stop'); } catch {}
+  };
+
   const handleQuickSetup = async () => {
+    cancelledRef.current = false;
     setAiError(null);
     setLoading(true);
     setBenchPhase('running');
@@ -149,6 +160,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         options: { preferredTier: "auto", preferredCompute: "auto", cudaVersion: builtinCudaVersion },
       });
 
+      if (cancelledRef.current) throw new Error('cancelled');
       const candidates = getComputeCandidates(r.probe, r.recommendedCudaVersion);
       const benchModelId = "qwen3_0_6b_q4_k_m";
 
@@ -168,8 +180,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         onProgress: createCh(),
       });
 
+      if (cancelledRef.current) throw new Error('cancelled');
       // Step 3: Benchmark each backend
       const results: BenchEntry[] = [];
+      let bestTier = -1;
       let bestTps = 0;
       let bestIdx = 0;
       let bestBenchResult: BenchResult | null = null;
@@ -210,7 +224,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           });
           const entry: BenchEntry = { ...c, tps: bench.tokensPerSecond };
           results.push(entry);
-          if (bench.tokensPerSecond > bestTps) {
+          // Pick engine by highest achievable tier (quality), break ties by tps (speed)
+          if (bench.recommendedTier > bestTier || (bench.recommendedTier === bestTier && bench.tokensPerSecond > bestTps)) {
+            bestTier = bench.recommendedTier;
             bestTps = bench.tokensPerSecond;
             bestIdx = results.length - 1;
             bestBenchResult = bench;
@@ -255,6 +271,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   /** Install user-selected model and start service */
   const handleInstallModel = async () => {
     if (!bestEngine) return;
+    cancelledRef.current = false;
     setAiError(null);
     setLoading(true);
     setBenchPhase('running');
@@ -277,6 +294,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         onProgress: createCh(),
       });
 
+      if (cancelledRef.current) throw new Error('cancelled');
       // Start service
       setAiStep(b("正在启动 AI 服务...", "Starting AI service..."));
       setDownloadProgress(null);
@@ -602,10 +620,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 {/* Install button */}
                 <div className="flex justify-between gap-2">
                   <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => { setLoading(false); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); setStep("paths"); }}>
+                    <Button variant="ghost" size="sm" onClick={async () => { await cancelSetup(); setStep("paths"); }}>
                       <ChevronLeft className="w-4 h-4 mr-1" /> {b("上一步", "Back")}
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => { setLoading(false); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); handleSkipAI(); }}>
+                    <Button variant="ghost" size="sm" onClick={async () => { await cancelSetup(); handleSkipAI(); }}>
                       {b("跳过", "Skip")}
                     </Button>
                   </div>
@@ -716,11 +734,11 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
             {benchPhase !== 'selecting' && (
               <div className="flex justify-between pt-2">
-                <Button variant="ghost" onClick={() => { setLoading(false); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); setStep("paths"); }}>
+                <Button variant="ghost" onClick={async () => { await cancelSetup(); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); setStep("paths"); }}>
                   <ChevronLeft className="w-4 h-4 mr-1" /> {b("上一步", "Back")}
                 </Button>
                 <div className="flex gap-2">
-                  <Button variant="ghost" onClick={() => { setLoading(false); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); handleSkipAI(); }}>
+                  <Button variant="ghost" onClick={async () => { await cancelSetup(); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); handleSkipAI(); }}>
                     {b("跳过", "Skip")}
                   </Button>
                   {(builtinConfigured || ollamaConfigured || apiConfigured) && (

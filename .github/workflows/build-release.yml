@@ -72,6 +72,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      # Inject version from git tag (e.g. v1.1.0 → 1.1.0) into tauri.conf.json
+      - name: Inject version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Injecting version: $VERSION"
+          cd src-tauri
+          if command -v python3 &>/dev/null; then
+            python3 -c "
+          import json, sys
+          with open('tauri.conf.json', 'r') as f: c = json.load(f)
+          c['version'] = '$VERSION'
+          with open('tauri.conf.json', 'w') as f: json.dump(c, f, indent=2, ensure_ascii=False)
+          print(f'Updated tauri.conf.json version to {c[\"version\"]}')"
+          else
+            sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" tauri.conf.json
+          fi
+          grep '"version"' tauri.conf.json
+
       - name: Install frontend dependencies
         run: npm ci
 

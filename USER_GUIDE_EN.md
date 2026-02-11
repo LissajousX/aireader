@@ -195,9 +195,9 @@ All settings take effect immediately.
 
 | Benchmark | Model | Size |
 |:---|:---|:---|
-| ≥ 200 tok/s | Qwen3-32B | ~19 GB |
-| 150–199 tok/s | Qwen3-14B | ~9 GB |
-| ≥ 100 tok/s | Qwen3-8B | ~5 GB |
+| ≥ 420 tok/s | Qwen3-32B | ~19 GB |
+| 185–419 tok/s | Qwen3-14B | ~9 GB |
+| 100–184 tok/s | Qwen3-8B | ~5 GB |
 | 50–99 tok/s | Qwen3-4B | ~2.7 GB |
 | 20–49 tok/s | Qwen3-1.7B | ~1.2 GB |
 | < 20 tok/s | Qwen3-0.6B | ~0.5 GB |

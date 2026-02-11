@@ -2408,7 +2408,11 @@ pub struct BenchmarkResult {
 ///   1.7B ≈ 2.8x slower,  4B ≈ 6.5x slower,  8B ≈ 13x slower,
 ///   14B ≈ 23x slower,  32B ≈ 53x slower
 /// Fluency target: ≥ 8 tok/s generation speed.
-fn tier_from_benchmark(tps: f64, total_mem_gb: u64) -> (i32, String) {
+///
+/// Constraints applied:
+///   - RAM: caps tier based on total system memory
+///   - VRAM: for GPU/hybrid modes, also caps tier by available VRAM
+fn tier_from_benchmark(tps: f64, total_mem_gb: u64, compute_mode: &str, vram_bytes: Option<u64>) -> (i32, String) {
     let tier = if tps >= 420.0 { 5 }       // 32B estimated ~7.9 tok/s
         else if tps >= 185.0 { 4 }         // 14B estimated ~8.0 tok/s
         else if tps >= 100.0 { 3 }         // 8B estimated ~7.7 tok/s
@@ -2416,14 +2420,20 @@ fn tier_from_benchmark(tps: f64, total_mem_gb: u64) -> (i32, String) {
         else if tps >= 20.0 { 1 }          // 1.7B estimated ~7.1 tok/s
         else { 0 };                         // stay with 0.6B
 
-    // Also cap by RAM
+    // Cap by RAM
     let ram_tier = if total_mem_gb < 8 { 0 }
         else if total_mem_gb < 12 { 1 }
         else if total_mem_gb < 20 { 2 }
         else if total_mem_gb < 32 { 3 }
         else if total_mem_gb < 48 { 4 }
         else { 5 };
-    let final_tier = tier.min(ram_tier);
+    let mut final_tier = tier.min(ram_tier);
+
+    // For GPU/hybrid modes, also cap by VRAM
+    if compute_mode == "gpu" || compute_mode == "hybrid" {
+        final_tier = cap_tier_by_vram(final_tier, vram_bytes);
+    }
+
     let model_id = tier_to_model_id(final_tier, total_mem_gb);
     (final_tier, model_id)
 }
@@ -2536,7 +2546,8 @@ pub async fn builtin_llm_benchmark(
         sys.total_memory() / 1024 / 1024 / 1024
     };
 
-    let (recommended_tier, recommended_model_id) = tier_from_benchmark(tokens_per_second, total_mem_gb);
+    let vram = probe_vram_bytes();
+    let (recommended_tier, recommended_model_id) = tier_from_benchmark(tokens_per_second, total_mem_gb, compute_mode, vram);
 
     Ok(BenchmarkResult {
         tokens_per_second,

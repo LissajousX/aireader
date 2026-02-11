@@ -16,8 +16,8 @@ describe("useSettingsStore", () => {
       expect(useSettingsStore.getState().theme).toBe("system");
     });
 
-    it("has default markdownScale 0.75", () => {
-      expect(useSettingsStore.getState().markdownScale).toBe(0.75);
+    it("has default markdownScale 0.8", () => {
+      expect(useSettingsStore.getState().markdownScale).toBe(0.8);
     });
 
     it("has default enableThinking true", () => {
@@ -161,6 +161,56 @@ describe("useSettingsStore", () => {
         openAICompatibleModel: "gpt-4o",
       });
       expect(useSettingsStore.getState().getActiveModel()).toBe("gpt-4o");
+    });
+  });
+
+  describe("provider settings persistence (regression)", () => {
+    it("ollamaUrl persists through save/load cycle", () => {
+      useSettingsStore.getState().setOllamaUrl("http://myhost:11434");
+      useSettingsStore.getState().saveSettings();
+
+      // Reset to default
+      useSettingsStore.setState({ ollamaUrl: "http://localhost:11434" });
+      expect(useSettingsStore.getState().ollamaUrl).toBe("http://localhost:11434");
+
+      // Load should restore custom URL
+      useSettingsStore.getState().loadSettings();
+      expect(useSettingsStore.getState().ollamaUrl).toBe("http://myhost:11434");
+    });
+
+    it("ollamaModel persists through save/load cycle", () => {
+      useSettingsStore.getState().setOllamaModel("llama3:70b");
+      useSettingsStore.getState().saveSettings();
+
+      useSettingsStore.setState({ ollamaModel: "qwen3:8b" });
+      useSettingsStore.getState().loadSettings();
+      expect(useSettingsStore.getState().ollamaModel).toBe("llama3:70b");
+    });
+
+    it("openAICompatible settings persist through save/load cycle", () => {
+      useSettingsStore.getState().setOpenAICompatibleBaseUrl("https://api.example.com/v1");
+      useSettingsStore.getState().setOpenAICompatibleApiKey("sk-test123");
+      useSettingsStore.getState().setOpenAICompatibleModel("gpt-4o");
+      useSettingsStore.getState().saveSettings();
+
+      useSettingsStore.setState({
+        openAICompatibleBaseUrl: "",
+        openAICompatibleApiKey: "",
+        openAICompatibleModel: "",
+      });
+      useSettingsStore.getState().loadSettings();
+      expect(useSettingsStore.getState().openAICompatibleBaseUrl).toBe("https://api.example.com/v1");
+      expect(useSettingsStore.getState().openAICompatibleApiKey).toBe("sk-test123");
+      expect(useSettingsStore.getState().openAICompatibleModel).toBe("gpt-4o");
+    });
+
+    it("llmProvider persists through save/load cycle", () => {
+      useSettingsStore.getState().setLlmProvider("ollama");
+      useSettingsStore.getState().saveSettings();
+
+      useSettingsStore.setState({ llmProvider: "builtin_local" });
+      useSettingsStore.getState().loadSettings();
+      expect(useSettingsStore.getState().llmProvider).toBe("ollama");
     });
   });
 

@@ -115,7 +115,12 @@ input:focus, select:focus, textarea:focus, button:focus-visible {
   outline: none;
 }
 
-/* AI panel prose: inherit font-size from parent so markdownScale works */
+/* AI panel prose: force inherit font-size so markdownScale wrapper works.
+   Tailwind prose uses rem which bypasses the wrapper's font-size;
+   we override everything to em so the scale propagates correctly. */
+.ai-prose {
+  font-size: inherit !important;
+}
 .ai-prose p,
 .ai-prose li,
 .ai-prose blockquote,
@@ -124,14 +129,24 @@ input:focus, select:focus, textarea:focus, button:focus-visible {
   font-size: 1em;
   line-height: 1.6;
 }
-.ai-prose h1 { font-size: 1.4em; }
-.ai-prose h2 { font-size: 1.25em; }
-.ai-prose h3 { font-size: 1.1em; }
+.ai-prose ol,
+.ai-prose ul {
+  padding-left: 1.25em;
+}
+.ai-prose h1 { font-size: 1.3em; font-weight: 600; }
+.ai-prose h2 { font-size: 1.15em; font-weight: 600; }
+.ai-prose h3 { font-size: 1.05em; font-weight: 600; }
 .ai-prose h4,
 .ai-prose h5,
-.ai-prose h6 { font-size: 1em; }
+.ai-prose h6 { font-size: 1em; font-weight: 600; }
 .ai-prose pre {
+  font-size: 0.85em;
+}
+.ai-prose code:not(pre code) {
   font-size: 0.9em;
+}
+.ai-prose strong {
+  font-weight: 600;
 }
 .ai-prose :first-child { margin-top: 0; }
 .ai-prose :last-child { margin-bottom: 0; }

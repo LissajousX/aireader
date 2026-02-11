@@ -200,12 +200,12 @@ PDF 和 EPUB 支持目录侧栏，两种打开方式：
 
 | 基准测试结果 | 推荐模型 |
 |:---|:---|
-| ≥ 200 tok/s | Qwen3-32B (T6) |
-| 150–199 tok/s | Qwen3-14B (T5) |
-| ≥ 100 tok/s | Qwen3-8B (T4) |
-| 50–99 tok/s | Qwen3-4B (T3) |
-| 20–49 tok/s | Qwen3-1.7B (T2) |
-| < 20 tok/s | Qwen3-0.6B (T1) |
+| ≥ 420 tok/s | Qwen3-32B (T5) |
+| 185–419 tok/s | Qwen3-14B (T4) |
+| 100–184 tok/s | Qwen3-8B (T3) |
+| 50–99 tok/s | Qwen3-4B (T2) |
+| 20–49 tok/s | Qwen3-1.7B (T1) |
+| < 20 tok/s | Qwen3-0.6B (T0) |
 
 **模型降级：** 如果觉得当前模型太慢，简易模式下有「降级到更小模型」按钮，一键切换。
 
@@ -458,12 +458,12 @@ Built-in AI provides **Simple Mode** (one-click setup) and **Advanced Mode** (ma
 
 | Benchmark Result | Recommended Model |
 |:---|:---|
-| ≥ 200 tok/s | Qwen3-32B (T6) |
-| 150–199 tok/s | Qwen3-14B (T5) |
-| ≥ 100 tok/s | Qwen3-8B (T4) |
-| 50–99 tok/s | Qwen3-4B (T3) |
-| 20–49 tok/s | Qwen3-1.7B (T2) |
-| < 20 tok/s | Qwen3-0.6B (T1) |
+| ≥ 420 tok/s | Qwen3-32B (T5) |
+| 185–419 tok/s | Qwen3-14B (T4) |
+| 100–184 tok/s | Qwen3-8B (T3) |
+| 50–99 tok/s | Qwen3-4B (T2) |
+| 20–49 tok/s | Qwen3-1.7B (T1) |
+| < 20 tok/s | Qwen3-0.6B (T0) |
 
 **Model Downgrade:** If the current model feels too slow, Simple Mode provides a "Downgrade to a smaller model" button for one-click switching.
 

@@ -11,15 +11,19 @@
     "fs:default",
     {
       "identifier": "fs:allow-exists",
-      "allow": [{ "path": "**" }]
+      "allow": [{ "path": "$APPDATA/**" }, { "path": "$HOME/**" }, { "path": "**" }]
     },
     {
       "identifier": "fs:allow-read-file",
-      "allow": [{ "path": "**" }]
+      "allow": [{ "path": "$APPDATA/**" }, { "path": "$HOME/**" }, { "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [{ "path": "$APPDATA/**" }, { "path": "$HOME/**" }, { "path": "**" }]
     },
     {
       "identifier": "fs:allow-write-text-file",
-      "allow": [{ "path": "**" }]
+      "allow": [{ "path": "$APPDATA/**" }, { "path": "$HOME/**" }, { "path": "**" }]
     },
     {
       "identifier": "http:default",

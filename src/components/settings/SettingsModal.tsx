@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, ChevronDown, ChevronUp, RotateCcw, RefreshCw, CheckCircle, XCircle, Loader2, Trash2, Download, Copy, Upload, Settings, Globe, Sparkles, HardDrive, FolderOpen, Zap, Languages, ArrowDown } from "lucide-react";
+import { X, ChevronDown, ChevronUp, RotateCcw, RefreshCw, CheckCircle, XCircle, Loader2, Trash2, Download, Copy, Upload, Settings, Globe, Sparkles, HardDrive, FolderOpen, Zap, Languages, ArrowDown, Info, ExternalLink, Heart, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useSettingsStore, DEFAULT_PROMPTS, type PromptSettings } from "@/stores/settingsStore";
 import { fetchOllamaModels, testOllamaConnection, formatModelSize, type OllamaModel } from "@/services/ollamaApi";
@@ -9,12 +9,12 @@ import { useI18n } from "@/i18n";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getErrorMessage } from "@/lib/utils";
-import { getRuntimeDownloads, BUILTIN_MODELS as BUILTIN_MODELS_CONFIG } from "@/config/downloads";
+import { BUILTIN_MODELS as BUILTIN_MODELS_CONFIG, RUNTIME_ENTRIES, detectPlatform } from "@/config/downloads";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'general' | 'ai' | 'storage';
+  initialTab?: 'general' | 'ai' | 'storage' | 'about';
 }
 
 const PROMPT_LABELS_ZH: Record<keyof PromptSettings, string> = {
@@ -80,7 +80,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const [showDownloadUrls, setShowDownloadUrls] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [cacheStats, setCacheStats] = useState({ count: 0, size: 0, maxSize: 200 * 1024 * 1024 });
-  const [settingsTab, setSettingsTab] = useState<'general' | 'ai' | 'storage'>(initialTab || 'general');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'ai' | 'storage' | 'about'>(initialTab || 'general');
+  const [appVersion, setAppVersion] = useState<string>('');
   
   // Ollama 模型相关状态
   const [models, setModels] = useState<OllamaModel[]>([]);
@@ -112,7 +113,13 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const [startedConfig, setStartedConfig] = useState<{ modelId: string; cm: string; gb: string; cv: string; gl: number } | null>(null);
 
 
-  const RUNTIME_DOWNLOADS = getRuntimeDownloads();
+  // Read app version from Tauri
+  useEffect(() => {
+    if (isOpen && !appVersion) {
+      invoke<string>('get_app_version').then(v => setAppVersion(v)).catch(() => setAppVersion(''));
+    }
+  }, [isOpen]);
+
 
   const getRuntimeUrlKeys = (computeMode: string, gpuBackend: string, cudaVersion: string) => {
     if (computeMode === 'cpu') return { rtKey: '__rt_cpu', cudartKey: null };
@@ -957,6 +964,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     { id: 'general' as const, label: b('通用', 'General'), icon: Globe },
     { id: 'ai' as const, label: b('AI', 'AI'), icon: Sparkles },
     { id: 'storage' as const, label: b('存储', 'Storage'), icon: HardDrive },
+    { id: 'about' as const, label: b('关于', 'About'), icon: Info },
   ];
 
   const ToggleSwitch = ({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) => (
@@ -1161,6 +1169,33 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
           {/* ===== AI Tab ===== */}
           {settingsTab === 'ai' && (
             <>
+              {/* Global download progress banner — always visible at top */}
+              {(builtinGlobalLoading || runtimeInstalling) && (
+                <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-primary flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      {downloadProgress ? downloadProgress.label : b('正在处理...', 'Processing...')}
+                    </span>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      {downloadProgress && (
+                        <span className="text-[11px] tabular-nums">
+                          {(downloadProgress.written / 1024 / 1024).toFixed(1)} MB
+                          {downloadProgress.total ? ` / ${(downloadProgress.total / 1024 / 1024).toFixed(1)} MB` : ''}
+                          {downloadProgress.speed ? ` · ${downloadProgress.speed >= 1048576 ? (downloadProgress.speed / 1048576).toFixed(1) + ' MB/s' : (downloadProgress.speed / 1024).toFixed(0) + ' KB/s'}` : ''}
+                        </span>
+                      )}
+                      <button className="text-[10px] text-destructive hover:underline" onClick={async () => { try { await invoke('builtin_llm_cancel_download'); } catch {} }}>{b('取消', 'Cancel')}</button>
+                    </div>
+                  </div>
+                  <div className="h-2 bg-muted/50 rounded-full overflow-hidden">
+                    {downloadProgress?.total
+                      ? <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${Math.min(100, (downloadProgress.written / downloadProgress.total) * 100)}%` }} />
+                      : <div className="h-full bg-primary/60 rounded-full animate-pulse" style={{ width: '30%' }} />}
+                  </div>
+                </div>
+              )}
+
               <p className="text-xs text-muted-foreground">
                 {b('在 AI 助手面板的模型列表中切换使用的模型和服务。下方可分别配置各服务。',
                    'Switch models via the AI panel dropdown. Configure each provider below.')}
@@ -1359,9 +1394,9 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                              'Detect hardware → multi-engine benchmark (CUDA/Vulkan/Metal/CPU) → pick fastest backend → auto-recommend best model.')}
                         </div>
                         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground/70">
-                          <span>≥200 → 32B</span>
-                          <span>150–199 → 14B</span>
-                          <span>≥100 → 8B</span>
+                          <span>≥420 → 32B</span>
+                          <span>185–419 → 14B</span>
+                          <span>100–184 → 8B</span>
                           <span>50–99 → 4B</span>
                           <span>20–49 → 1.7B</span>
                           <span>&lt;20 → 0.6B</span>
@@ -1793,7 +1828,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                     <div>
                       <label className="text-xs font-medium">{b('服务地址', 'Server URL')}</label>
                       <div className="flex gap-2 mt-1">
-                        <input type="text" value={ollamaUrl} onChange={(e) => setOllamaUrl(e.target.value)} className="flex-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="http://localhost:11434" />
+                        <input type="text" value={ollamaUrl} onChange={(e) => { setOllamaUrl(e.target.value); saveSettings(); }} className="flex-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="http://localhost:11434" />
                         <Button variant="outline" size="sm" className="rounded-lg h-8 px-3" onClick={handleRefreshModels} disabled={loadingModels}>
                           {loadingModels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                         </Button>
@@ -1806,11 +1841,11 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                     <div>
                       <label className="text-xs font-medium">{b('模型', 'Model')}</label>
                       {models.length > 0 ? (
-                        <select value={ollamaModel} onChange={(e) => setOllamaModel(e.target.value)} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm">
+                        <select value={ollamaModel} onChange={(e) => { setOllamaModel(e.target.value); saveSettings(); }} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm">
                           {models.map((model) => (<option key={model.name} value={model.name}>{model.name} ({formatModelSize(model.size)})</option>))}
                         </select>
                       ) : (
-                        <input type="text" value={ollamaModel} onChange={(e) => setOllamaModel(e.target.value)} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="qwen3:8b" />
+                        <input type="text" value={ollamaModel} onChange={(e) => { setOllamaModel(e.target.value); saveSettings(); }} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="qwen3:8b" />
                       )}
                       <p className="text-[11px] text-muted-foreground mt-1">
                         {models.length > 0 ? b(`${models.length} 个模型`, `${models.length} model(s)`) : b('输入模型名或刷新', 'Type model name or refresh')}
@@ -1833,16 +1868,16 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               <div className="rounded-xl border border-border/60 p-4 space-y-3">
                   <div>
                     <label className="text-xs font-medium">Base URL</label>
-                    <input type="text" value={openAICompatibleBaseUrl} onChange={(e) => setOpenAICompatibleBaseUrl(e.target.value)} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="https://api.openai.com/v1" />
+                    <input type="text" value={openAICompatibleBaseUrl} onChange={(e) => { setOpenAICompatibleBaseUrl(e.target.value); saveSettings(); }} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="https://api.openai.com/v1" />
                     <p className="text-[11px] text-muted-foreground mt-1">{b('需要包含', 'Must include')} <code className="bg-muted px-1 rounded text-[10px]">/v1</code></p>
                   </div>
                   <div>
                     <label className="text-xs font-medium">API Key</label>
-                    <input type="password" value={openAICompatibleApiKey} onChange={(e) => setOpenAICompatibleApiKey(e.target.value)} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="sk-..." />
+                    <input type="password" value={openAICompatibleApiKey} onChange={(e) => { setOpenAICompatibleApiKey(e.target.value); saveSettings(); }} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="sk-..." />
                   </div>
                   <div>
                     <label className="text-xs font-medium">Model</label>
-                    <input type="text" value={openAICompatibleModel} onChange={(e) => setOpenAICompatibleModel(e.target.value)} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="gpt-4o-mini" />
+                    <input type="text" value={openAICompatibleModel} onChange={(e) => { setOpenAICompatibleModel(e.target.value); saveSettings(); }} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="gpt-4o-mini" />
                   </div>
                 </div>
               </div>
@@ -1899,51 +1934,78 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   <div className="px-4 pb-4 space-y-3 border-t border-border/40">
                     <div className="flex items-center justify-between pt-3">
                       <div className="text-[11px] text-muted-foreground">
-                        {b('留空则使用默认链接（魔塔社区）', 'Leave empty to use default URLs (ModelScope)')}
+                        {b('自定义下载链接，留空使用默认镜像', 'Custom download URLs. Leave empty for default mirror.')}
                       </div>
                       <Button variant="outline" size="sm" className="rounded-lg text-xs h-6 px-2" onClick={() => { resetAllBuiltinDownloadUrls(); saveSettings(); }}>
                         <RotateCcw className="w-3 h-3 mr-1" />{b('全部重置', 'Reset All')}
                       </Button>
                     </div>
+                    <div className="text-[10px] text-muted-foreground bg-muted/40 rounded-lg p-2.5 leading-relaxed">
+                      {b(
+                        '默认使用魔塔社区（中国大陆加速）。如需使用 GitHub/HuggingFace 镜像，可将备用链接填入对应输入框。',
+                        'Defaults to ModelScope (fast in China). To use GitHub/HuggingFace, paste the alt URL into the input.'
+                      )}
+                    </div>
+
+                    {/* Runtime Tools */}
                     <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider pt-1">{b('运行时工具', 'Runtime Tools')}</div>
-                    {RUNTIME_DOWNLOADS.map((rd) => (
-                      <div key={rd.key} className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <label className="text-xs font-medium">{rd.label}</label>
-                          {builtinDownloadUrls[rd.key] && (
-                            <Button variant="ghost" size="sm" onClick={() => { resetBuiltinDownloadUrl(rd.key); saveSettings(); }} className="h-5 px-1.5 text-[11px]">
-                              <RotateCcw className="w-2.5 h-2.5 mr-0.5" />{b('重置', 'Reset')}
-                            </Button>
-                          )}
-                        </div>
-                        <input
-                          type="text"
-                          value={builtinDownloadUrls[rd.key] || ''}
-                          onChange={(e) => { setBuiltinDownloadUrl(rd.key, e.target.value); saveSettings(); }}
-                          placeholder={rd.defaultUrl}
-                          className="w-full px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-[11px] font-mono placeholder:text-muted-foreground/40"
-                        />
-                      </div>
-                    ))}
+                    {(() => {
+                      const platform = detectPlatform();
+                      return RUNTIME_ENTRIES
+                        .filter((e: typeof RUNTIME_ENTRIES[number]) => e.urls[platform] != null)
+                        .map((e: typeof RUNTIME_ENTRIES[number]) => {
+                          const urls = e.urls[platform]!;
+                          return (
+                            <div key={e.key} className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <label className="text-xs font-medium">{e.label}</label>
+                                {builtinDownloadUrls[e.key] && (
+                                  <Button variant="ghost" size="sm" onClick={() => { resetBuiltinDownloadUrl(e.key); saveSettings(); }} className="h-5 px-1.5 text-[11px]">
+                                    <RotateCcw className="w-2.5 h-2.5 mr-0.5" />{b('重置', 'Reset')}
+                                  </Button>
+                                )}
+                              </div>
+                              <input
+                                type="text"
+                                value={builtinDownloadUrls[e.key] || ''}
+                                onChange={(ev) => { setBuiltinDownloadUrl(e.key, ev.target.value); saveSettings(); }}
+                                placeholder={urls[0]}
+                                className="w-full px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-[11px] font-mono placeholder:text-muted-foreground/40"
+                              />
+                              <div className="text-[10px] text-muted-foreground/60 font-mono truncate" title={urls[1]}>
+                                {b('备用', 'Alt')}: {urls[1]}
+                              </div>
+                            </div>
+                          );
+                        });
+                    })()}
+
                     <div className="border-t border-border/30 my-1" />
-                    <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{b('模型', 'Models')}</div>
-                    {BUILTIN_MODELS.map((m) => (
-                      <div key={m.id} className="space-y-1">
+
+                    {/* Models */}
+                    <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{b('模型 (GGUF)', 'Models (GGUF)')}</div>
+                    {BUILTIN_MODELS_CONFIG.map((mc) => (
+                      <div key={mc.id} className="space-y-1">
                         <div className="flex items-center justify-between">
-                          <label className="text-xs font-medium">{m.title} <span className="text-muted-foreground font-normal">{m.subtitle.split('·')[0].trim()}</span></label>
-                          {builtinDownloadUrls[m.id] && (
-                            <Button variant="ghost" size="sm" onClick={() => { resetBuiltinDownloadUrl(m.id); saveSettings(); }} className="h-5 px-1.5 text-[11px]">
+                          <label className="text-xs font-medium">
+                            {mc.title} <span className="text-muted-foreground font-normal">T{mc.tier}</span>
+                          </label>
+                          {builtinDownloadUrls[mc.id] && (
+                            <Button variant="ghost" size="sm" onClick={() => { resetBuiltinDownloadUrl(mc.id); saveSettings(); }} className="h-5 px-1.5 text-[11px]">
                               <RotateCcw className="w-2.5 h-2.5 mr-0.5" />{b('重置', 'Reset')}
                             </Button>
                           )}
                         </div>
                         <input
                           type="text"
-                          value={builtinDownloadUrls[m.id] || ''}
-                          onChange={(e) => { setBuiltinDownloadUrl(m.id, e.target.value); saveSettings(); }}
-                          placeholder={m.url}
+                          value={builtinDownloadUrls[mc.id] || ''}
+                          onChange={(ev) => { setBuiltinDownloadUrl(mc.id, ev.target.value); saveSettings(); }}
+                          placeholder={mc.urls[0]}
                           className="w-full px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-[11px] font-mono placeholder:text-muted-foreground/40"
                         />
+                        <div className="text-[10px] text-muted-foreground/60 font-mono truncate" title={mc.urls[1]}>
+                          {b('备用', 'Alt')}: {mc.urls[1]}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2015,6 +2077,90 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                     </Button>
                   </div>
                 </div>
+              </div>
+            </>
+          )}
+
+          {/* ===== About Tab ===== */}
+          {settingsTab === 'about' && (
+            <>
+              {/* App Info */}
+              <div className="rounded-xl border border-border/60 p-5 text-center space-y-3">
+                <div className="flex items-center justify-center gap-3">
+                  <BookOpen className="w-8 h-8 text-primary" strokeWidth={1.5} />
+                  <h1 className="text-2xl font-black uppercase tracking-wider">
+                    <span className="text-primary">Ai</span><span className="text-foreground/85">Reader</span>
+                  </h1>
+                </div>
+                {appVersion && (
+                  <div className="text-xs text-muted-foreground">
+                    {b('版本', 'Version')} {appVersion}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
+                  {b(
+                    '一个带有 AI 辅助翻译和解释功能的本地电子书阅读器。支持 PDF、EPUB、TXT、Markdown 格式。',
+                    'A local ebook reader with AI-powered translation and explanation. Supports PDF, EPUB, TXT, and Markdown.'
+                  )}
+                </p>
+              </div>
+
+              {/* Links */}
+              <div className="rounded-xl border border-border/60 overflow-hidden">
+                <div className="px-4 py-2.5 bg-muted/30 border-b border-border/40">
+                  <span className="text-xs font-medium">{b('链接', 'Links')}</span>
+                </div>
+                <div className="divide-y divide-border/40">
+                  {[
+                    { url: 'https://github.com/LissajousX/aireader', icon: <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />, title: 'GitHub', desc: 'github.com/LissajousX/aireader' },
+                    { url: 'https://github.com/LissajousX/aireader/releases', icon: <Download className="w-3.5 h-3.5 text-muted-foreground" />, title: b('更新日志 & 下载', 'Changelog & Downloads'), desc: b('查看最新版本和更新内容', 'View latest releases and changelogs') },
+                    { url: 'https://github.com/LissajousX/aireader/issues', icon: <Languages className="w-3.5 h-3.5 text-muted-foreground" />, title: b('反馈 & Bug 报告', 'Feedback & Bug Reports'), desc: b('提交问题或功能建议', 'Submit issues or feature requests') },
+                  ].map((link) => (
+                    <button
+                      key={link.url}
+                      type="button"
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer text-left"
+                      onClick={async () => {
+                        const { confirm } = await import("@tauri-apps/plugin-dialog");
+                        const ok = await confirm(
+                          b(`即将在系统浏览器中打开:\n${link.url}`, `Open in system browser:\n${link.url}`),
+                          { title: b('打开外部链接', 'Open External Link'), okLabel: b('打开', 'Open'), cancelLabel: b('取消', 'Cancel') }
+                        );
+                        if (ok) {
+                          try { await invoke('open_external_url', { url: link.url }); } catch {}
+                        }
+                      }}
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-muted/50 flex items-center justify-center">{link.icon}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium">{link.title}</div>
+                        <div className="text-[11px] text-muted-foreground">{link.desc}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Credits */}
+              <div className="rounded-xl border border-border/60 p-4 space-y-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <Heart className="w-3.5 h-3.5 text-pink-500" />
+                  <span className="text-xs font-medium">{b('致谢', 'Credits')}</span>
+                </div>
+                <div className="text-[11px] text-muted-foreground space-y-1 leading-relaxed">
+                  <p>• <strong>Tauri</strong> — {b('跨平台桌面应用框架', 'Cross-platform desktop app framework')}</p>
+                  <p>• <strong>llama.cpp</strong> — {b('本地 LLM 推理引擎', 'Local LLM inference engine')}</p>
+                  <p>• <strong>Qwen3</strong> — {b('内置 AI 模型系列', 'Built-in AI model family')}</p>
+                  <p>• <strong>epub.js</strong> — {b('EPUB 渲染引擎', 'EPUB rendering engine')}</p>
+                  <p>• <strong>pdf.js</strong> — {b('PDF 渲染引擎', 'PDF rendering engine')}</p>
+                  <p>• <strong>CC-CEDICT</strong> — {b('中英词典数据', 'Chinese-English dictionary data')}</p>
+                  <p>• <strong>ECDICT</strong> — {b('英中词典数据', 'English-Chinese dictionary data')}</p>
+                </div>
+              </div>
+
+              {/* Copyright */}
+              <div className="text-center text-[10px] text-muted-foreground/60 pt-1">
+                © {new Date().getFullYear()} Aireader. MIT License.
               </div>
             </>
           )}
