@@ -661,12 +661,15 @@ fn import_folder_copies(
         }
 
         let src = p.to_string_lossy().to_string();
-        let imported = if ext == "md" {
-            import_markdown_copy_impl(&base, &src)?
+        let result = if ext == "md" {
+            import_markdown_copy_impl(&base, &src)
         } else {
-            import_document_copy_impl(&base, &src)?
+            import_document_copy_impl(&base, &src)
         };
-        out.push(imported);
+        match result {
+            Ok(imported) => out.push(imported),
+            Err(e) => log::warn!("[import_folder] failed to import {}: {}", src, e),
+        }
     }
 
     Ok(out)
@@ -863,7 +866,7 @@ fn import_samples(
         let src = p.to_string_lossy().to_string();
         match import_document_copy_impl(&base, &src) {
             Ok(path) => out.push(path),
-            Err(e) => eprintln!("[samples] failed to import {}: {}", src, e),
+            Err(e) => log::warn!("[samples] failed to import {}: {}", src, e),
         }
     }
 
@@ -873,7 +876,7 @@ fn import_samples(
         let src = md_demo.to_string_lossy().to_string();
         match import_markdown_copy_impl(&base, &src) {
             Ok(path) => out.push(path),
-            Err(e) => eprintln!("[samples] failed to import markdown: {}", e),
+            Err(e) => log::warn!("[samples] failed to import markdown: {}", e),
         }
     }
 

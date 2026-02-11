@@ -376,8 +376,6 @@ export async function lookupWord(word: string): Promise<DictionaryResult | null>
   const result: DictionaryResult = { word: cleanWord, translation: translationFinal, meanings: [] };
   setCached(cleanWord, result);
   return result;
-  
-  return null;
 }
 
 // 判断是否为单个英文单词

@@ -327,7 +327,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if (saved.openAICompatibleApiKey !== undefined) set({ openAICompatibleApiKey: saved.openAICompatibleApiKey });
     if (saved.openAICompatibleModel) set({ openAICompatibleModel: saved.openAICompatibleModel });
     if (saved.enableThinking !== undefined) set({ enableThinking: saved.enableThinking });
-    if ((saved as any).markdownScale !== undefined) set({ markdownScale: (saved as any).markdownScale });
+    if ((saved as any).markdownScale !== undefined) {
+      const v = Number((saved as any).markdownScale);
+      if (Number.isFinite(v)) set({ markdownScale: Math.max(0.6, Math.min(1.2, v)) });
+    }
     if (saved.prompts) set({ prompts: { ...DEFAULT_PROMPTS, ...saved.prompts } });
     if ((saved as any).builtinDownloadUrls && typeof (saved as any).builtinDownloadUrls === 'object') {
       set({ builtinDownloadUrls: (saved as any).builtinDownloadUrls });
