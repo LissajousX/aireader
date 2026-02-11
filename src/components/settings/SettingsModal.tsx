@@ -963,10 +963,10 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   if (!isOpen) return null;
 
   const settingsTabs = [
-    { id: 'general' as const, label: b('通用', 'General'), icon: Globe },
-    { id: 'ai' as const, label: b('AI', 'AI'), icon: Sparkles },
-    { id: 'storage' as const, label: b('存储', 'Storage'), icon: HardDrive },
-    { id: 'about' as const, label: b('关于', 'About'), icon: Info },
+    { id: 'general' as const, label: b('通用', 'General'), icon: Globe, color: 'text-blue-500' },
+    { id: 'ai' as const, label: b('AI', 'AI'), icon: Sparkles, color: 'text-purple-500' },
+    { id: 'storage' as const, label: b('存储', 'Storage'), icon: HardDrive, color: 'text-amber-500' },
+    { id: 'about' as const, label: b('关于', 'About'), icon: Info, color: 'text-teal-500' },
   ];
 
   const ToggleSwitch = ({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) => (
@@ -1009,7 +1009,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              <tab.icon className="w-4 h-4" />
+              <tab.icon className={`w-4 h-4 ${tab.color}`} />
               {tab.label}
               {settingsTab === tab.id && (
                 <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-primary rounded-full" />
@@ -1027,7 +1027,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               {/* ── Section: Appearance ── */}
               <div>
                 <div className="flex items-center gap-2 mb-2 px-1">
-                  <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+                  <Globe className="w-3.5 h-3.5 text-blue-500" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('外观', 'Appearance')}</span>
                 </div>
                 <div className="rounded-xl border border-border/50 bg-card overflow-hidden divide-y divide-border/40">
@@ -1063,7 +1063,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               {/* ── Section: Dictionary ── */}
               <div>
                 <div className="flex items-center gap-2 mb-2 px-1">
-                  <Languages className="w-3.5 h-3.5 text-muted-foreground" />
+                  <Languages className="w-3.5 h-3.5 text-emerald-500" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('词典', 'Dictionary')}</span>
                 </div>
                 <div className="rounded-xl border border-border/50 bg-card overflow-hidden divide-y divide-border/40">
@@ -1087,7 +1087,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               {/* ── Section: Storage Paths ── */}
               <div>
                 <div className="flex items-center gap-2 mb-2 px-1">
-                  <FolderOpen className="w-3.5 h-3.5 text-muted-foreground" />
+                  <FolderOpen className="w-3.5 h-3.5 text-amber-500" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('存储路径', 'Storage Paths')}</span>
                 </div>
                 <div className="rounded-xl border border-border/50 bg-card overflow-hidden divide-y divide-border/40">
@@ -1095,7 +1095,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   <div className="px-4 py-3 space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <BookOpen className="w-3.5 h-3.5 text-muted-foreground/70" />
+                        <BookOpen className="w-3.5 h-3.5 text-blue-500/70" />
                         <span className="text-sm">{b('文档库', 'Library')}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -1118,7 +1118,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   <div className="px-4 py-3 space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Sparkles className="w-3.5 h-3.5 text-muted-foreground/70" />
+                        <Sparkles className="w-3.5 h-3.5 text-purple-500/70" />
                         <span className="text-sm">{b('AI 模型', 'AI Models')}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -1178,7 +1178,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               {/* ── Section: Built-in Local AI ── */}
               <div>
                 <div className="flex items-center gap-2 mb-2 px-1">
-                  <Zap className="w-3.5 h-3.5 text-muted-foreground" />
+                  <Zap className="w-3.5 h-3.5 text-amber-500" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('内置本地 AI', 'Built-in Local AI')}</span>
                   {llmProvider === 'builtin_local' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 font-medium">{b('使用中', 'Active')}</span>}
                 </div>
@@ -1798,7 +1798,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               {/* ── Section: Ollama ── */}
               <div>
                 <div className="flex items-center gap-2 mb-2 px-1">
-                  <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+                  <Globe className="w-3.5 h-3.5 text-teal-500" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ollama</span>
                   {llmProvider === 'ollama' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 font-medium">{b('使用中', 'Active')}</span>}
                 </div>
@@ -1838,7 +1838,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               {/* ── Section: OpenAI Compatible ── */}
               <div>
                 <div className="flex items-center gap-2 mb-2 px-1">
-                  <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+                  <Globe className="w-3.5 h-3.5 text-violet-500" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">OpenAI Compatible</span>
                   {llmProvider === 'openai_compatible' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 font-medium">{b('使用中', 'Active')}</span>}
                 </div>
@@ -1999,7 +1999,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               {/* ── Section: Document Cache ── */}
               <div>
                 <div className="flex items-center gap-2 mb-2 px-1">
-                  <HardDrive className="w-3.5 h-3.5 text-muted-foreground" />
+                  <HardDrive className="w-3.5 h-3.5 text-blue-500" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('文档缓存', 'Document Cache')}</span>
                 </div>
                 <div className="rounded-xl border border-border/50 bg-card overflow-hidden divide-y divide-border/40">
@@ -2095,7 +2095,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               {/* ── Section: Links ── */}
               <div>
                 <div className="flex items-center gap-2 mb-2 px-1">
-                  <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+                  <ExternalLink className="w-3.5 h-3.5 text-blue-500" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('链接', 'Links')}</span>
                 </div>
                 <div className="rounded-xl border border-border/50 bg-card overflow-hidden divide-y divide-border/40">
@@ -2132,7 +2132,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               {/* ── Section: Credits ── */}
               <div>
                 <div className="flex items-center gap-2 mb-2 px-1">
-                  <Heart className="w-3.5 h-3.5 text-muted-foreground" />
+                  <Heart className="w-3.5 h-3.5 text-pink-500" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('致谢', 'Credits')}</span>
                 </div>
                 <div className="rounded-xl border border-border/50 bg-card overflow-hidden">

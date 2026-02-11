@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Search } from "lucide-react";
+import { X, Search, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Markdown } from "@/components/ui/Markdown";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -519,7 +519,10 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="bg-card rounded-2xl shadow-2xl w-[820px] max-w-[92vw] max-h-[90vh] flex flex-col border border-border/50">
         <div className="flex items-center justify-between px-5 py-3 border-b border-border/60 gap-3">
-          <h2 className="font-semibold flex-shrink-0">{t("common.help")}</h2>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <BookOpen className="w-4 h-4 text-emerald-500" />
+            <h2 className="font-semibold">{t("common.help")}</h2>
+          </div>
           <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-0.5">
             <button
               onClick={() => setGuideLang('zh')}

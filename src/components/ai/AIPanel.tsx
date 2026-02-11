@@ -624,10 +624,10 @@ export function AIPanel({ style }: AIPanelProps) {
   };
 
   const tabs = [
-    { id: "translate" as const, label: t("翻译", "Translate"), icon: Languages },
-    { id: "explain" as const, label: t("文法解释", "Grammar"), icon: BookOpen },
-    { id: "chat" as const, label: t("对话", "Chat"), icon: MessageSquare },
-    { id: "notes" as const, label: t("笔记", "Notes"), icon: StickyNote },
+    { id: "translate" as const, label: t("翻译", "Translate"), icon: Languages, color: 'text-blue-500' },
+    { id: "explain" as const, label: t("文法解释", "Grammar"), icon: BookOpen, color: 'text-violet-500' },
+    { id: "chat" as const, label: t("对话", "Chat"), icon: MessageSquare, color: 'text-sky-500' },
+    { id: "notes" as const, label: t("笔记", "Notes"), icon: StickyNote, color: 'text-emerald-500' },
   ];
 
   const handleTabAction = () => {
@@ -926,7 +926,7 @@ export function AIPanel({ style }: AIPanelProps) {
                 : "text-muted-foreground hover:text-foreground hover:bg-background/50"
             )}
           >
-            <tab.icon className="w-3.5 h-3.5" />
+            <tab.icon className={`w-3.5 h-3.5 ${tab.color}`} />
             {tab.label}
           </button>
         ))}

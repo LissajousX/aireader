@@ -229,7 +229,7 @@ export function Sidebar({ onOpenFile, style }: SidebarProps) {
           className="w-full justify-start"
           onClick={openLibrary}
         >
-          <Library className="w-4 h-4 mr-2" />
+          <Library className="w-4 h-4 mr-2 text-blue-500" />
           {t("common.library")}
         </Button>
         <Button 
@@ -238,7 +238,7 @@ export function Sidebar({ onOpenFile, style }: SidebarProps) {
           className="w-full justify-start"
           onClick={openHelp}
         >
-          <HelpCircle className="w-4 h-4 mr-2" />
+          <HelpCircle className="w-4 h-4 mr-2 text-emerald-500" />
           {t("common.help")}
         </Button>
         <Button 
@@ -247,7 +247,7 @@ export function Sidebar({ onOpenFile, style }: SidebarProps) {
           className="w-full justify-start"
           onClick={openSettings}
         >
-          <Settings className="w-4 h-4 mr-2" />
+          <Settings className="w-4 h-4 mr-2 text-muted-foreground" />
           {t("common.settings")}
         </Button>
       </div>

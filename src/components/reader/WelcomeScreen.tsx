@@ -65,15 +65,15 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
               </button>
             </div>
             <Button variant="outline" size="sm" className="h-8 backdrop-blur bg-card/60" onClick={openLibrary}>
-              <Library className="w-4 h-4 mr-1.5" />
+              <Library className="w-4 h-4 mr-1.5 text-blue-500" />
               {t("common.library")}
             </Button>
             <Button variant="outline" size="sm" className="h-8 backdrop-blur bg-card/60" onClick={openHelp}>
-              <HelpCircle className="w-4 h-4 mr-1.5" />
+              <HelpCircle className="w-4 h-4 mr-1.5 text-emerald-500" />
               {t("common.help")}
             </Button>
             <Button variant="outline" size="sm" className="h-8 backdrop-blur bg-card/60" onClick={openSettings}>
-              <Settings className="w-4 h-4 mr-1.5" />
+              <Settings className="w-4 h-4 mr-1.5 text-muted-foreground" />
               {t("common.settings")}
             </Button>
             {onToggleTheme && (
@@ -82,7 +82,7 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
               </Button>
             )}
             <Button size="sm" className="h-8" onClick={toggleAIPanel}>
-              <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-purple-300" />
               {t("common.ai_assistant")}
             </Button>
           </div>
@@ -113,8 +113,8 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
               className="rounded-2xl border border-border/60 bg-card hover:bg-card/90 backdrop-blur-xl shadow-sm hover:shadow-md hover:border-primary/30 transition-all p-5 text-left active:translate-y-[1px]"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-primary" />
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                  <FileText className="w-5 h-5 text-blue-500" />
                 </div>
                 <div className="min-w-0">
                   <div className="font-medium">{t("welcome.open_primary")}</div>
@@ -129,8 +129,8 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
               className="rounded-2xl border border-border/60 bg-card hover:bg-card/90 backdrop-blur-xl shadow-sm hover:shadow-md hover:border-primary/30 transition-all p-5 text-left active:translate-y-[1px]"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <FolderOpen className="w-5 h-5 text-primary" />
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                  <FolderOpen className="w-5 h-5 text-amber-500" />
                 </div>
                 <div className="min-w-0">
                   <div className="font-medium">{t("welcome.action.import_folder.title")}</div>

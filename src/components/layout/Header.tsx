@@ -71,7 +71,7 @@ export function Header() {
             onClick={toggleTheme}
             title={isDark ? t("theme.switch_to_light") : t("theme.switch_to_dark")}
           >
-            {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            {isDark ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-indigo-400" />}
           </Button>
           <Button
             variant={aiPanelOpen ? "secondary" : "default"}
@@ -80,7 +80,7 @@ export function Header() {
             className="h-9 px-3"
             title={aiPanelOpen ? t("ai.close") : t("ai.open")}
           >
-            <Bot className="w-4 h-4" />
+            <Bot className="w-4 h-4 text-purple-400" />
           </Button>
         </div>
       </header>
