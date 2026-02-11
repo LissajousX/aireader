@@ -496,9 +496,12 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             {aiError && (
               <div className="rounded-xl border border-destructive/40 bg-destructive/[0.06] p-4 text-sm text-destructive flex items-start justify-between gap-2">
                 <span>{aiError}</span>
-                <Button variant="outline" size="sm" className="flex-shrink-0" onClick={() => { setAiError(null); handleQuickSetup(); }}>
-                  {b("重试", "Retry")}
-                </Button>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Button variant="outline" size="sm" className="flex-shrink-0" onClick={() => { setAiError(null); handleQuickSetup(); }}>
+                    {b("重试", "Retry")}
+                  </Button>
+                  <button className="text-destructive/60 hover:text-destructive text-lg leading-none px-1" onClick={() => setAiError(null)}>×</button>
+                </div>
               </div>
             )}
 

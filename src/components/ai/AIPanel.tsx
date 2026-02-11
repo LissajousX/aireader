@@ -1321,8 +1321,9 @@ export function AIPanel({ style }: AIPanelProps) {
             )}
 
             {activeContext?.error && (
-              <div className="text-sm text-destructive bg-destructive/10 p-2 rounded-xl">
-                {activeContext.error}
+              <div className="text-sm text-destructive bg-destructive/10 p-2 rounded-xl flex items-start justify-between gap-2">
+                <span>{activeContext.error}</span>
+                <button className="text-destructive/60 hover:text-destructive flex-shrink-0 text-sm leading-none px-1" onClick={() => { if (activeContextKey) clearContext(activeContextKey); }}>×</button>
               </div>
             )}
 

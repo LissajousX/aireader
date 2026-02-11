@@ -1237,18 +1237,21 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                     </div>
 
                     {builtinError && (
-                      <div className="text-xs text-destructive bg-destructive/10 rounded-lg p-2 flex items-center justify-between gap-2">
+                      <div className="text-xs text-destructive bg-destructive/10 rounded-lg p-2 flex items-start justify-between gap-2">
                         <span className="break-all">{builtinError}</span>
-                        {lastFailedModelId && !isAnyBusy && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="rounded-lg text-xs h-6 px-2 flex-shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10"
-                            onClick={() => { setBuiltinError(null); setLastFailedModelId(null); handleBuiltinInstall(lastFailedModelId); }}
-                          >
-                            <RotateCcw className="w-3 h-3 mr-1" />{b('重试', 'Retry')}
-                          </Button>
-                        )}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {lastFailedModelId && !isAnyBusy && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="rounded-lg text-xs h-6 px-2 flex-shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10"
+                              onClick={() => { setBuiltinError(null); setLastFailedModelId(null); handleBuiltinInstall(lastFailedModelId); }}
+                            >
+                              <RotateCcw className="w-3 h-3 mr-1" />{b('重试', 'Retry')}
+                            </Button>
+                          )}
+                          <button className="text-destructive/60 hover:text-destructive text-sm leading-none px-1" onClick={() => { setBuiltinError(null); setLastFailedModelId(null); }}>×</button>
+                        </div>
                       </div>
                     )}
                   </div>
