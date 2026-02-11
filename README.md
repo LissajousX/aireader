@@ -4,112 +4,122 @@
 
 # Aireader
 
-### Your Documents. Your GPU. Your Knowledge.
+### 让你的算力为你服务
 
-**AI-powered reading assistant that runs 100% on your machine**
+**完全离线的 AI 阅读助手 — 翻译、解释、对话、笔记，一切在本地完成**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tauri 2.0](https://img.shields.io/badge/Tauri-2.0-orange)](https://tauri.app)
-[![llama.cpp](https://img.shields.io/badge/llama.cpp-b7966-green)](https://github.com/ggerganov/llama.cpp)
+[![llama.cpp](https://img.shields.io/badge/llama.cpp-b7966-green)](https://github.com/ggml-org/llama.cpp)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20·%20macOS%20·%20Ubuntu-lightgrey)]()
 
-**[English](README_EN.md)** · **[中文](README_CN.md)** · **[User Guide](USER_GUIDE_EN.md)** · **[用户指南](USER_GUIDE_CN.md)**
+**[English](README_EN.md)** · **[用户指南](USER_GUIDE_CN.md)** · **[User Guide](USER_GUIDE_EN.md)**
 
 </div>
 
 ---
 
-> Most AI reading tools send your documents to the cloud. **Aireader doesn't.**
+> 大多数 AI 阅读工具把你的文档发送到云端。**Aireader 不会。**
 >
-> Built-in llama.cpp engine. AI runs on your CPU/GPU. Data never leaves your machine.
+> 内置 llama.cpp 推理引擎，AI 在你的 CPU/GPU 上运行，数据永远不会离开你的电脑。
 
-<div align="center">
+## 📸 界面预览
 
-![Main Interface](screenshots/main-interface.png)
+| 主界面 | 选中翻译 |
+|:---:|:---:|
+| ![主界面](screenshots/main-interface.png) | ![选中翻译](screenshots/select-translate.png) |
 
-</div>
+<details>
+<summary><b>更多截图</b></summary>
 
-## ✨ Highlights
+| 功能 | 中文 | English |
+|:---|:---:|:---:|
+| AI 对话 | ![](screenshots/ai-chat.png) | ![](screenshots/ai-chat-en.png) |
+| 深色主题 | ![](screenshots/dark-theme.png) | ![](screenshots/dark-theme-en.png) |
+| 词典弹窗 | ![](screenshots/dictionary-popup.png) | ![](screenshots/dictionary-popup-en.png) |
+| 快速配置 | ![](screenshots/quick-setup.png) | ![](screenshots/quick-setup-en.png) |
 
-- **🔒 100% Offline** — Zero cloud dependency. Your documents stay on your machine.
-- **⚡ Smart Hardware Matching** — Auto-detects GPU → benchmarks all backends (CUDA / Vulkan / Metal / CPU) → picks the fastest → you choose the model.
-- **📖 Reading-First** — Not a chatbot. A real AI assistant for deep reading: select text → translate → explain → save notes.
-- **🌐 Flexible AI Backends** — Built-in Qwen3 (0.6B–32B), or connect Ollama / OpenAI-compatible APIs.
-- **📚 Offline Dictionaries** — Built-in ECDICT + CC-CEDICT. Double-click any word.
+</details>
 
-## �️ Supported Platforms
+## ✨ 核心特性
 
-| Platform | GPU Acceleration |
+- **🔒 完全离线** — 零云端依赖，文档数据只在你的电脑上
+- **⚡ 智能硬件适配** — 自动检测 GPU → 跑分所有后端 (CUDA / Vulkan / Metal / CPU) → 选最快的 → 你选模型
+- **📖 为阅读而生** — 不是聊天机器人，是真正的阅读 AI 助手：选中文本 → 翻译 → 解释 → 保存笔记
+- **🌐 灵活的 AI 后端** — 内置 Qwen3 (0.6B–32B)，也可连接 Ollama / OpenAI 兼容 API
+- **📚 离线词典** — 内置 ECDICT + CC-CEDICT，双击查词
+- **🌗 明暗主题** — 支持浅色/深色/跟随系统
+
+## 🖥️ 支持平台
+
+| 平台 | GPU 加速 |
 |:---|:---|
 | **Windows x64** | CUDA 12.4/13.1 · Vulkan · CPU |
-| **macOS arm64** | Metal (CPU+GPU unified) |
+| **macOS arm64** | Metal (CPU+GPU 统一内存) |
 | **macOS x64** | CPU |
 | **Ubuntu x64** | Vulkan · CPU |
 
-## 🚀 Quick Start
+## 🚀 快速开始
 
 ```bash
-npm install          # Install dependencies
-npm run tauri dev    # Development mode
-npm run tauri build  # Build for production
+npm install          # 安装依赖
+npm run tauri dev    # 开发模式
+npm run tauri build  # 构建发布版
 ```
 
-**First launch** → Setup wizard → Language → Storage paths → Multi-engine benchmark → Choose model → Start reading.
+**首次启动** → 引导向导 → 选择语言 → 设置存储路径 → 多引擎跑分 → 选择模型 → 开始阅读
 
-## 🏗️ Tech Stack
+## 🏗️ 技术栈
 
-| Layer | Technology |
+| 层级 | 技术 |
 |:---|:---|
-| Frontend | React 18 · TypeScript · TailwindCSS · Zustand |
-| Desktop | Tauri 2.0 (Rust) |
-| AI Engine | llama.cpp b7966 · llama-bench · Qwen3 0.6B–32B (Q4_K_M) |
-| Rendering | react-pdf / pdf.js · epub.js · react-markdown |
-| Storage | SQLite (rusqlite) · localStorage |
-| Dictionary | [ECDICT](https://github.com/skywind3000/ECDICT) · [CC-CEDICT](https://cc-cedict.org/) |
+| 前端 | React 18 · TypeScript · TailwindCSS · Zustand |
+| 桌面 | Tauri 2.0 (Rust) |
+| AI 引擎 | llama.cpp b7966 · llama-bench · Qwen3 0.6B–32B (Q4_K_M) |
+| 文档渲染 | react-pdf / pdf.js · epub.js · react-markdown |
+| 存储 | SQLite (rusqlite) · localStorage |
+| 词典 | [ECDICT](https://github.com/skywind3000/ECDICT) · [CC-CEDICT](https://cc-cedict.org/) |
 
 <details>
-<summary><b>📁 Project Structure</b></summary>
+<summary><b>📁 项目结构</b></summary>
 
 ```
 aireader/
-├── src/                        # React frontend
+├── src/                        # React 前端
 │   ├── components/
-│   │   ├── ai/                 # AI panel & contextual chat
-│   │   ├── help/               # Help modal
-│   │   ├── layout/             # Sidebar, welcome, document library
-│   │   ├── notes/              # Notes panel
-│   │   ├── reader/             # PDF / EPUB / TXT / MD readers
-│   │   ├── settings/           # Settings modal
-│   │   ├── setup/              # First-launch setup wizard
-│   │   └── ui/                 # Shared UI & dictionary popup
-│   ├── config/                 # Download URLs & model tiers
-│   ├── i18n/                   # Internationalization (CN/EN)
-│   ├── services/               # Ollama API & streaming
-│   ├── stores/                 # Zustand state management
-│   └── types/                  # TypeScript type definitions
-├── src-tauri/                  # Rust backend
+│   │   ├── ai/                 # AI 面板 & 上下文对话
+│   │   ├── layout/             # 侧边栏、欢迎页、文档库
+│   │   ├── reader/             # PDF / EPUB / TXT / MD 阅读器
+│   │   ├── settings/           # 设置面板
+│   │   ├── setup/              # 首次启动引导向导
+│   │   └── ui/                 # 通用 UI 组件 & 词典弹窗
+│   ├── config/                 # 下载链接 & 模型定义
+│   ├── services/               # Ollama API & 流式输出
+│   ├── stores/                 # Zustand 状态管理
+│   └── types/                  # TypeScript 类型定义
+├── src-tauri/                  # Rust 后端
 │   ├── src/
-│   │   ├── lib.rs              # Tauri commands & app config
-│   │   ├── builtin_llm.rs      # llama.cpp integration & model management
-│   │   ├── database.rs         # SQLite note storage
-│   │   ├── dictionary.rs       # ECDICT / CC-CEDICT dictionary
-│   │   ├── epub.rs             # EPUB extraction
-│   │   └── ollama.rs           # Ollama proxy
-│   ├── resources/              # Dictionaries & sample documents
+│   │   ├── lib.rs              # Tauri 命令 & 应用配置
+│   │   ├── builtin_llm.rs      # llama.cpp 集成 & 模型管理
+│   │   ├── database.rs         # SQLite 笔记存储
+│   │   ├── dictionary.rs       # ECDICT / CC-CEDICT 词典
+│   │   ├── epub.rs             # EPUB 解析
+│   │   └── ollama.rs           # Ollama 代理
+│   ├── resources/              # 词典 & 示例文档
 │   └── Cargo.toml
 └── package.json
 ```
 
 </details>
 
-## 🙏 Acknowledgments
+## 🙏 致谢
 
-- [llama.cpp](https://github.com/ggerganov/llama.cpp) — Local LLM inference engine
-- [Tauri](https://tauri.app) — Desktop application framework
-- [Qwen3](https://github.com/QwenLM/Qwen3) — Built-in language models
-- [ECDICT](https://github.com/skywind3000/ECDICT) — Offline English-Chinese dictionary
-- [CC-CEDICT](https://cc-cedict.org/) — Offline Chinese-English dictionary
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) — 本地 LLM 推理引擎
+- [Tauri](https://tauri.app) — 桌面应用框架
+- [Qwen3](https://github.com/QwenLM/Qwen3) — 内置语言模型
+- [ECDICT](https://github.com/skywind3000/ECDICT) — 离线英汉词典
+- [CC-CEDICT](https://cc-cedict.org/) — 离线汉英词典
 
-## 📄 License
+## 📄 许可证
 
 [MIT](LICENSE) © xujiayu

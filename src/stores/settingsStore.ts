@@ -1,5 +1,15 @@
 import { create } from 'zustand';
 
+/** Apply theme to the document root element */
+function applyTheme(theme: 'light' | 'dark' | 'system') {
+  const root = document.documentElement;
+  if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    root.classList.add('dark');
+  } else {
+    root.classList.remove('dark');
+  }
+}
+
 export interface PromptSettings {
   translateLiteral: string;
   translateFree: string;
@@ -26,8 +36,11 @@ export const DEFAULT_PROMPTS: PromptSettings = {
   chatContext: `The user has selected the following text from the document:\n\n"{text}"\n\nPlease answer questions based on this context. Respond in the same language as the user's question.`,
 };
 
+export type ThemeSetting = 'light' | 'dark' | 'system';
+
 interface SettingsState {
   uiLanguage: 'zh' | 'en';
+  theme: ThemeSetting;
   dictEnableEnToZh: boolean;
   dictEnableZhToEn: boolean;
   documentsDir: string | null;
@@ -51,6 +64,7 @@ interface SettingsState {
   builtinDownloadUrls: Record<string, string>;
   
   getActiveModel: () => string;
+  setTheme: (theme: ThemeSetting) => void;
   setUiLanguage: (lang: 'zh' | 'en') => void;
   setDictEnableEnToZh: (enabled: boolean) => void;
   setDictEnableZhToEn: (enabled: boolean) => void;
@@ -181,11 +195,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   openAICompatibleBaseUrl: localStorage.getItem("openai_compatible_base_url") || "https://api.openai.com/v1",
   openAICompatibleApiKey: localStorage.getItem("openai_compatible_api_key") || "",
   openAICompatibleModel: localStorage.getItem("openai_compatible_model") || "gpt-4o-mini",
+  theme: (() => {
+    const raw = localStorage.getItem('aireader_theme');
+    if (raw === 'light' || raw === 'dark' || raw === 'system') return raw;
+    return 'system' as ThemeSetting;
+  })(),
   enableThinking: true,
   markdownScale: (() => {
     const raw = localStorage.getItem('markdown_scale');
     const v = raw ? Number.parseFloat(raw) : NaN;
-    return Number.isFinite(v) ? v : 1.0;
+    return Number.isFinite(v) ? v : 0.85;
   })(),
   prompts: { ...DEFAULT_PROMPTS },
   builtinDownloadUrls: {},
@@ -228,6 +247,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           ? { ollamaModel: model }
           : {}
     ),
+  setTheme: (theme) => {
+    set({ theme });
+    localStorage.setItem('aireader_theme', theme);
+    applyTheme(theme);
+  },
   setEnableThinking: (enabled) => set({ enableThinking: enabled }),
   setMarkdownScale: (scale) => set({ markdownScale: Math.max(0.8, Math.min(1.2, scale)) }),
   

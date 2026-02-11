@@ -56,6 +56,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     builtinCudaVersion,
     openAICompatibleBaseUrl, openAICompatibleApiKey, openAICompatibleModel,
     prompts,
+    theme,
+    setTheme,
     setUiLanguage,
     setDictEnableEnToZh,
     setDictEnableZhToEn,
@@ -1034,6 +1036,39 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                     className={`px-5 py-1.5 text-sm rounded-md transition-all ${uiLanguage === 'en' ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}
                   >
                     English
+                  </button>
+                </div>
+              </div>
+
+              {/* Theme */}
+              <div className="rounded-xl border border-border/60 p-4">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center">
+                    <Settings className="w-3.5 h-3.5 text-purple-500" />
+                  </div>
+                  <label className="text-sm font-medium">{b('主题', 'Theme')}</label>
+                </div>
+                <div className="flex rounded-lg border border-border p-0.5 bg-muted/30 w-fit">
+                  <button
+                    type="button"
+                    onClick={() => { setTheme('light'); saveSettings(); }}
+                    className={`px-4 py-1.5 text-sm rounded-md transition-all ${theme === 'light' ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {b('浅色', 'Light')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTheme('dark'); saveSettings(); }}
+                    className={`px-4 py-1.5 text-sm rounded-md transition-all ${theme === 'dark' ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {b('深色', 'Dark')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTheme('system'); saveSettings(); }}
+                    className={`px-4 py-1.5 text-sm rounded-md transition-all ${theme === 'system' ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {b('跟随系统', 'System')}
                   </button>
                 </div>
               </div>

@@ -981,7 +981,7 @@ export function AIPanel({ style }: AIPanelProps) {
                     {note.originalText && (
                       <div className="text-xs bg-muted/50 p-2 rounded text-muted-foreground max-h-16 overflow-auto">{note.originalText}</div>
                     )}
-                    <div className="text-sm prose prose-sm dark:prose-invert max-w-none">
+                    <div className="prose prose-sm ai-prose dark:prose-invert max-w-none">
                       <div style={{ fontSize: `${markdownScale}rem` }}>
                         <Markdown>{note.content}</Markdown>
                       </div>
@@ -1061,7 +1061,7 @@ export function AIPanel({ style }: AIPanelProps) {
                               )}
                             </div>
                           )}
-                          <div className="text-sm prose prose-sm dark:prose-invert max-w-none">
+                          <div className="prose prose-sm ai-prose dark:prose-invert max-w-none">
                             <div style={{ fontSize: `${markdownScale}rem` }}>
                               <Markdown>{msg.content}</Markdown>
                             </div>
@@ -1114,7 +1114,7 @@ export function AIPanel({ style }: AIPanelProps) {
                           </div>
                         )}
                         {contexts.chat.streamingContent ? (
-                          <div className="text-sm prose prose-sm dark:prose-invert max-w-none">
+                          <div className="prose prose-sm ai-prose dark:prose-invert max-w-none">
                             <div style={{ fontSize: `${markdownScale}rem` }}>
                               <Markdown>{contexts.chat.streamingContent}</Markdown>
                             </div>
@@ -1350,8 +1350,10 @@ export function AIPanel({ style }: AIPanelProps) {
                   </span>
                   {activeContext?.isLoading ? t('生成中...', 'Generating...') : t('结果', 'Result')}
                 </div>
-                <div className="text-sm bg-primary/5 p-3 rounded-xl prose prose-sm dark:prose-invert max-w-none">
-                  <Markdown>{currentContent}</Markdown>
+                <div className="bg-primary/5 p-3 rounded-xl prose prose-sm ai-prose dark:prose-invert max-w-none">
+                  <div style={{ fontSize: `${markdownScale}rem` }}>
+                    <Markdown>{currentContent}</Markdown>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={!!activeContext?.isLoading} className="border-primary/30 text-primary hover:bg-primary/10 hover:text-primary">

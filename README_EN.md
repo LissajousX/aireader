@@ -1,103 +1,65 @@
 <div align="center">
 
+<img src="screenshots/icon.png" width="80" alt="Aireader" />
+
 # Aireader
 
-### Your Documents. Your GPU. Your Knowledge.
+### Put Your Compute to Work for You
 
-**AI-powered reading assistant that runs 100% on your machine**
+**Fully offline AI reading assistant — translate, explain, chat, take notes, all on your machine**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tauri 2.0](https://img.shields.io/badge/Tauri-2.0-orange)](https://tauri.app)
-[![llama.cpp](https://img.shields.io/badge/llama.cpp-b7966-green)](https://github.com/ggerganov/llama.cpp)
+[![llama.cpp](https://img.shields.io/badge/llama.cpp-b7966-green)](https://github.com/ggml-org/llama.cpp)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20·%20macOS%20·%20Ubuntu-lightgrey)]()
 
-[中文版](README_CN.md) · [User Guide](USER_GUIDE_EN.md)
+**[中文](README.md)** · **[User Guide](USER_GUIDE_EN.md)** · **[用户指南](USER_GUIDE_CN.md)**
 
 </div>
 
 ---
 
-## Why Aireader?
+> Most AI reading tools send your documents to the cloud. **Aireader doesn't.**
+>
+> Built-in llama.cpp engine. AI runs on your CPU/GPU. Data never leaves your machine.
 
-> Your documents never leave your machine. AI inference runs 100% locally.
+## 📸 Screenshots
 
-Most AI reading tools send your documents to the cloud. Aireader is different:
-
-- **🔒 Fully Offline** — Built-in llama.cpp engine. AI runs on your computer. Data never leaves your machine.
-- **⚡ Smart Hardware Adaptation** — Auto-detects GPU, benchmarks all backends (CUDA / Vulkan / Metal / CPU), picks the fastest, then you choose the model from a recommended list.
-- **📖 Reading-First Design** — Not another chatbot. A true AI assistant built for deep reading: select → translate → explain → save.
-
-## Screenshots
-
-<div align="center">
-
-![Main Interface](screenshots/main-interface.png)
-
-</div>
+| Main Interface | Select to Translate |
+|:---:|:---:|
+| ![Main Interface](screenshots/main-interface-en.png) | ![Select to Translate](screenshots/select-translate-en.png) |
 
 <details>
-<summary>More Screenshots</summary>
+<summary><b>More Screenshots</b></summary>
 
-![Select to Translate](screenshots/select-translate.png)
-![AI Chat](screenshots/ai-chat.png)
-![Quick Setup](screenshots/quick-setup.png)
-![Dark Theme](screenshots/dark-theme.png)
-![Dictionary Popup](screenshots/dictionary-popup.png)
+| Feature | English | 中文 |
+|:---|:---:|:---:|
+| AI Chat | ![](screenshots/ai-chat-en.png) | ![](screenshots/ai-chat.png) |
+| Dark Theme | ![](screenshots/dark-theme-en.png) | ![](screenshots/dark-theme.png) |
+| Dictionary Popup | ![](screenshots/dictionary-popup-en.png) | ![](screenshots/dictionary-popup.png) |
+| Quick Setup | ![](screenshots/quick-setup-en.png) | ![](screenshots/quick-setup.png) |
 
 </details>
 
-## Key Features
+## ✨ Highlights
 
-| Feature | Description |
-|:---|:---|
-| 📄 **Multi-Format** | PDF · EPUB · Markdown · TXT with auto-saved reading progress |
-| 🤖 **Local AI** | Built-in llama.cpp, zero-config, multi-engine benchmark for precise hardware matching |
-| 🌐 **Multiple Backends** | Built-in Qwen3 (0.6B–32B) · Ollama · OpenAI-compatible APIs |
-| 🔤 **Select to Translate** | Literal / free / plain-language translation, complex sentence breakdown |
-| 📚 **Offline Dictionary** | Built-in ECDICT + CC-CEDICT, double-click lookup, bidirectional CN↔EN |
-| 📝 **Smart Notes** | AI-generated drafts, human-confirmed, persistent storage (SQLite) |
-| 💬 **Contextual Chat** | Multi-turn conversation about reading content, with deep thinking support |
-| 📁 **Document Library** | Copy or link import, custom storage, independent model directory |
-| 🌓 **Dark / Light Theme** | Follow system or manual toggle, independent document area control |
-| 🌍 **Bilingual UI** | Chinese & English, auto-detected |
+- **🔒 100% Offline** — Zero cloud dependency. Your documents stay on your machine.
+- **⚡ Smart Hardware Matching** — Auto-detects GPU → benchmarks all backends (CUDA / Vulkan / Metal / CPU) → picks the fastest → you choose the model
+- **📖 Reading-First** — Not a chatbot. A real AI assistant for deep reading: select text → translate → explain → save notes
+- **🌐 Flexible AI Backends** — Built-in Qwen3 (0.6B–32B), or connect Ollama / OpenAI-compatible APIs
+- **📚 Offline Dictionaries** — Built-in ECDICT + CC-CEDICT. Double-click any word.
+- **🌗 Dark / Light Theme** — Light, dark, or follow system
 
-## Smart Hardware Adaptation
-
-Aireader uses a **3-layer adaptive strategy** to automatically match the best model for your hardware:
-
-1. **Hardware Detection** — Detect GPU type & VRAM, enumerate all available backends (CUDA / Vulkan / Metal / CPU)
-2. **Multi-Engine Benchmark** — Install & run llama-bench on each backend, measure actual inference speed (tok/s), auto-select the fastest
-3. **Model Selection** — Recommend a model tier based on benchmark, present the full list for you to choose
-
-| Benchmark Result | Recommended Model | Size |
-|:---|:---|:---|
-| ≥ 200 tok/s | Qwen3-32B | ~19 GB |
-| 150–199 tok/s | Qwen3-14B | ~9 GB |
-| ≥ 100 tok/s | Qwen3-8B | ~5 GB |
-| 50–99 tok/s | Qwen3-4B | ~2.7 GB |
-| 20–49 tok/s | Qwen3-1.7B | ~1.2 GB |
-| < 20 tok/s | Qwen3-0.6B | ~0.5 GB |
-
-All models use Q4_K_M quantization. Integrated GPUs (Intel UHD/HD/Iris, VRAM < 2GB) automatically fall back to CPU mode.
-
-## Download Mirrors
-
-Model and runtime downloads automatically probe both mirrors and pick the fastest:
-
-- **ModelScope** — Fast in mainland China
-- **HuggingFace / GitHub** — Fast overseas
-
-No manual configuration needed. The system races HEAD requests to both and downloads from whichever responds first.
-
-## Supported Platforms
+## �️ Supported Platforms
 
 | Platform | GPU Acceleration |
 |:---|:---|
 | **Windows x64** | CUDA 12.4/13.1 · Vulkan · CPU |
-| **macOS arm64** | Metal (CPU+GPU unified binary) |
+| **macOS arm64** | Metal (CPU+GPU unified memory) |
 | **macOS x64** | CPU |
 | **Ubuntu x64** | Vulkan · CPU |
 
-## Quick Start
+## 🚀 Quick Start
 
 ```bash
 npm install          # Install dependencies
@@ -105,21 +67,59 @@ npm run tauri dev    # Development mode
 npm run tauri build  # Build for production
 ```
 
-### How to Use
+**First launch** → Setup wizard → Language → Storage paths → Multi-engine benchmark → Choose model → Start reading
 
-1. First launch → Setup wizard (language → storage paths → **multi-engine benchmark → choose model → start**)
-2. Open a document, select text
-3. AI panel appears → Translate / Explain / Chat
-4. Save valuable content as notes
+## 🏗️ Tech Stack
 
-📖 Full user guide: [USER_GUIDE_EN.md](USER_GUIDE_EN.md)
+| Layer | Technology |
+|:---|:---|
+| Frontend | React 18 · TypeScript · TailwindCSS · Zustand |
+| Desktop | Tauri 2.0 (Rust) |
+| AI Engine | llama.cpp b7966 · llama-bench · Qwen3 0.6B–32B (Q4_K_M) |
+| Rendering | react-pdf / pdf.js · epub.js · react-markdown |
+| Storage | SQLite (rusqlite) · localStorage |
+| Dictionary | [ECDICT](https://github.com/skywind3000/ECDICT) · [CC-CEDICT](https://cc-cedict.org/) |
 
-## Development Requirements
+<details>
+<summary><b>📁 Project Structure</b></summary>
 
-- Node.js 18+
-- Rust 1.70+
-- Optional: Ollama (for Ollama mode)
+```
+aireader/
+├── src/                        # React frontend
+│   ├── components/
+│   │   ├── ai/                 # AI panel & contextual chat
+│   │   ├── layout/             # Sidebar, welcome, document library
+│   │   ├── reader/             # PDF / EPUB / TXT / MD readers
+│   │   ├── settings/           # Settings modal
+│   │   ├── setup/              # First-launch setup wizard
+│   │   └── ui/                 # Shared UI & dictionary popup
+│   ├── config/                 # Download URLs & model tiers
+│   ├── services/               # Ollama API & streaming
+│   ├── stores/                 # Zustand state management
+│   └── types/                  # TypeScript type definitions
+├── src-tauri/                  # Rust backend
+│   ├── src/
+│   │   ├── lib.rs              # Tauri commands & app config
+│   │   ├── builtin_llm.rs      # llama.cpp integration & model management
+│   │   ├── database.rs         # SQLite note storage
+│   │   ├── dictionary.rs       # ECDICT / CC-CEDICT dictionary
+│   │   ├── epub.rs             # EPUB extraction
+│   │   └── ollama.rs           # Ollama proxy
+│   ├── resources/              # Dictionaries & sample documents
+│   └── Cargo.toml
+└── package.json
+```
 
-## License
+</details>
+
+## 🙏 Acknowledgments
+
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) — Local LLM inference engine
+- [Tauri](https://tauri.app) — Desktop application framework
+- [Qwen3](https://github.com/QwenLM/Qwen3) — Built-in language models
+- [ECDICT](https://github.com/skywind3000/ECDICT) — Offline English-Chinese dictionary
+- [CC-CEDICT](https://cc-cedict.org/) — Offline Chinese-English dictionary
+
+## 📄 License
 
 [MIT](LICENSE) © xujiayu

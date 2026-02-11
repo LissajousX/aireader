@@ -115,6 +115,27 @@ input:focus, select:focus, textarea:focus, button:focus-visible {
   outline: none;
 }
 
+/* AI panel prose: inherit font-size from parent so markdownScale works */
+.ai-prose p,
+.ai-prose li,
+.ai-prose blockquote,
+.ai-prose td,
+.ai-prose th {
+  font-size: 1em;
+  line-height: 1.6;
+}
+.ai-prose h1 { font-size: 1.4em; }
+.ai-prose h2 { font-size: 1.25em; }
+.ai-prose h3 { font-size: 1.1em; }
+.ai-prose h4,
+.ai-prose h5,
+.ai-prose h6 { font-size: 1em; }
+.ai-prose pre {
+  font-size: 0.9em;
+}
+.ai-prose :first-child { margin-top: 0; }
+.ai-prose :last-child { margin-bottom: 0; }
+
 /* Selection highlight */
 ::selection {
   background: hsl(var(--primary) / 0.3);

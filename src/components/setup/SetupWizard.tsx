@@ -335,7 +335,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         <div className="absolute bottom-0 -left-20 w-[600px] h-[400px] rounded-full bg-primary/[0.04] blur-[100px]" />
       </div>
 
-      <div className="relative w-full max-w-xl mx-auto px-6">
+      <div className="relative w-full max-w-xl mx-auto px-6 max-h-[90vh] overflow-y-auto">
         {/* Step indicator */}
         <div className="flex items-center justify-center gap-2 mb-8">
           {(["welcome", "paths", "ai", "done"] as Step[]).map((s, i) => (
@@ -600,10 +600,15 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 </div>
 
                 {/* Install button */}
-                <div className="flex justify-end gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => { setBenchPhase('idle'); }}>
-                    {b("取消", "Cancel")}
-                  </Button>
+                <div className="flex justify-between gap-2">
+                  <div className="flex gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => { setLoading(false); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); setStep("paths"); }}>
+                      <ChevronLeft className="w-4 h-4 mr-1" /> {b("上一步", "Back")}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => { setLoading(false); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); handleSkipAI(); }}>
+                      {b("跳过", "Skip")}
+                    </Button>
+                  </div>
                   <Button size="sm" onClick={handleInstallModel} disabled={loading}>
                     <HardDrive className="w-3.5 h-3.5 mr-1.5" />
                     {b("安装并启动", "Install & Start")}
@@ -711,11 +716,11 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
             {benchPhase !== 'selecting' && (
               <div className="flex justify-between pt-2">
-                <Button variant="ghost" onClick={() => setStep("paths")} disabled={loading}>
+                <Button variant="ghost" onClick={() => { setLoading(false); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); setStep("paths"); }}>
                   <ChevronLeft className="w-4 h-4 mr-1" /> {b("上一步", "Back")}
                 </Button>
                 <div className="flex gap-2">
-                  <Button variant="ghost" onClick={handleSkipAI} disabled={loading}>
+                  <Button variant="ghost" onClick={() => { setLoading(false); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); handleSkipAI(); }}>
                     {b("跳过", "Skip")}
                   </Button>
                   {(builtinConfigured || ollamaConfigured || apiConfigured) && (
