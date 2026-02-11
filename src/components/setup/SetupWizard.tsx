@@ -90,12 +90,13 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
         },
       });
       saveSettings();
+      setStep("ai");
     } catch (e) {
       console.error("[SetupWizard] Failed to save paths:", e);
+      setAiError(b("保存路径失败：", "Failed to save paths: ") + String(e));
     } finally {
       setLoading(false);
     }
-    setStep("ai");
   };
 
   // ─── Multi-engine benchmark + model selection ───
@@ -421,7 +422,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                     value={documentsDir}
                     className="flex-1 px-3 py-2 text-sm rounded-lg border border-border bg-background/60 text-muted-foreground truncate"
                   />
-                  <Button variant="outline" size="sm" onClick={async () => { const d = await pickDir(documentsDir); if (d) setDocumentsDir(d); }}>
+                  <Button variant="outline" size="sm" disabled={loading} onClick={async () => { const d = await pickDir(documentsDir); if (d) setDocumentsDir(d); }}>
                     {b("浏览", "Browse")}
                   </Button>
                 </div>
@@ -440,7 +441,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                     value={modelsDir}
                     className="flex-1 px-3 py-2 text-sm rounded-lg border border-border bg-background/60 text-muted-foreground truncate"
                   />
-                  <Button variant="outline" size="sm" onClick={async () => { const d = await pickDir(modelsDir); if (d) setModelsDir(d); }}>
+                  <Button variant="outline" size="sm" disabled={loading} onClick={async () => { const d = await pickDir(modelsDir); if (d) setModelsDir(d); }}>
                     {b("浏览", "Browse")}
                   </Button>
                 </div>
@@ -650,6 +651,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                     <div>
                       <label className="text-xs text-muted-foreground">{b("Ollama 地址", "Ollama URL")}</label>
                       <input type="text" value={localOllamaUrl} onChange={e => { setLocalOllamaUrl(e.target.value); setOllamaTestStatus('idle'); }} className="w-full mt-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" placeholder="http://localhost:11434" />
+                      {localOllamaUrl && !/^https?:\/\/.+/.test(localOllamaUrl) && (
+                        <p className="text-[10px] text-amber-600 mt-0.5">{b('URL 应以 http:// 或 https:// 开头', 'URL should start with http:// or https://')}</p>
+                      )}
                     </div>
                     <div>
                       <label className="text-xs text-muted-foreground">{b("模型名称", "Model Name")}</label>
@@ -666,10 +670,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                         {ollamaTestStatus === 'testing' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Wifi className="w-3 h-3 mr-1" />}
                         {ollamaTestStatus === 'ok' ? b('连接成功 ✓', 'Connected ✓') : ollamaTestStatus === 'fail' ? b('连接失败 ✗', 'Failed ✗') : b('测试连接', 'Test')}
                       </Button>
-                      <Button size="sm" className="flex-1" onClick={() => {
+                      <Button size="sm" className="flex-1" disabled={!localOllamaUrl.trim() || !localOllamaModel.trim()} onClick={() => {
                         const s = useSettingsStore.getState();
-                        s.setOllamaUrl(localOllamaUrl);
-                        s.setOllamaModel(localOllamaModel);
+                        s.setOllamaUrl(localOllamaUrl.trim());
+                        s.setOllamaModel(localOllamaModel.trim());
                         s.saveSettings();
                         setOllamaConfigured(true);
                       }}>
@@ -695,6 +699,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                     <div>
                       <label className="text-xs text-muted-foreground">Base URL</label>
                       <input type="text" value={localApiUrl} onChange={e => { setLocalApiUrl(e.target.value); setApiTestStatus('idle'); }} className="w-full mt-1 px-3 py-1.5 text-sm rounded-lg border border-border bg-background" placeholder="https://api.openai.com/v1" />
+                      {localApiUrl && !localApiUrl.replace(/\/+$/, '').endsWith('/v1') && (
+                        <p className="text-[10px] text-amber-600 mt-0.5">{b('Base URL 通常以 /v1 结尾', 'Base URL typically ends with /v1')}</p>
+                      )}
                     </div>
                     <div>
                       <label className="text-xs text-muted-foreground">API Key</label>
@@ -717,11 +724,11 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                         {apiTestStatus === 'testing' ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Wifi className="w-3 h-3 mr-1" />}
                         {apiTestStatus === 'ok' ? b('连接成功 ✓', 'Connected ✓') : apiTestStatus === 'fail' ? b('连接失败 ✗', 'Failed ✗') : b('测试连接', 'Test')}
                       </Button>
-                      <Button size="sm" className="flex-1" onClick={() => {
+                      <Button size="sm" className="flex-1" disabled={!localApiUrl.trim() || !localApiKey.trim() || !localApiModel.trim()} onClick={() => {
                         const s = useSettingsStore.getState();
-                        s.setOpenAICompatibleBaseUrl(localApiUrl);
-                        s.setOpenAICompatibleApiKey(localApiKey);
-                        s.setOpenAICompatibleModel(localApiModel);
+                        s.setOpenAICompatibleBaseUrl(localApiUrl.trim());
+                        s.setOpenAICompatibleApiKey(localApiKey.trim());
+                        s.setOpenAICompatibleModel(localApiModel.trim());
                         s.saveSettings();
                         setApiConfigured(true);
                       }}>
@@ -735,11 +742,11 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
             {benchPhase !== 'selecting' && (
               <div className="flex justify-between pt-2">
-                <Button variant="ghost" onClick={async () => { await cancelSetup(); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); setStep("paths"); }}>
+                <Button variant="ghost" disabled={loading} onClick={async () => { await cancelSetup(); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); setStep("paths"); }}>
                   <ChevronLeft className="w-4 h-4 mr-1" /> {b("上一步", "Back")}
                 </Button>
                 <div className="flex gap-2">
-                  <Button variant="ghost" onClick={async () => { await cancelSetup(); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); handleSkipAI(); }}>
+                  <Button variant="ghost" disabled={loading} onClick={async () => { await cancelSetup(); setAiStep(null); setDownloadProgress(null); setBenchPhase('idle'); handleSkipAI(); }}>
                     {b("跳过", "Skip")}
                   </Button>
                   {(builtinConfigured || ollamaConfigured || apiConfigured) && (

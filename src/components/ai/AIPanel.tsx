@@ -36,7 +36,6 @@ export function AIPanel({ style }: AIPanelProps) {
     openAICompatibleBaseUrl,
     openAICompatibleApiKey,
     prompts,
-    builtinDownloadUrls,
     setLlmProvider,
     setBuiltinModelId,
     setActiveModel,
@@ -216,16 +215,19 @@ export function AIPanel({ style }: AIPanelProps) {
       setLlmProvider('builtin_local');
       setBuiltinModelId(modelId);
       saveSettings();
-      const rtKey = builtinComputeMode === 'cpu' ? '__rt_cpu' : builtinGpuBackend === 'cuda' ? `__rt_cuda_${builtinCudaVersion}` : builtinGpuBackend === 'metal' ? '__rt_metal' : '__rt_vulkan';
-      const cudartKey = (builtinComputeMode !== 'cpu' && builtinGpuBackend === 'cuda') ? `__cudart_${builtinCudaVersion}` : '';
       const onProgress = new Channel<{ written: number; total: number | null; label: string }>();
       onProgress.onmessage = () => {};
       await invoke<any>("builtin_llm_ensure_running", {
-        options: { modelId, mode: "auto", computeMode: builtinComputeMode, gpuBackend: builtinGpuBackend, gpuLayers: builtinGpuLayers, cudaVersion: builtinCudaVersion, runtimeUrl: builtinDownloadUrls[rtKey] || undefined, cudartUrl: builtinDownloadUrls[cudartKey] || undefined },
+        options: { modelId, mode: "bundled_only", computeMode: builtinComputeMode, gpuBackend: builtinGpuBackend, gpuLayers: builtinGpuLayers, cudaVersion: builtinCudaVersion },
         onProgress,
       });
       await refreshBuiltinInfo(modelId);
-    } catch { /* ignore */ }
+    } catch (err) {
+      const msg = typeof err === 'string' ? err : (err as any)?.message || String(err);
+      if (!/cancelled/i.test(msg)) {
+        showWarning(t('启动失败: ', 'Start failed: ') + msg);
+      }
+    }
     setBuiltinActionLoading(prev => ({ ...prev, [modelId]: false }));
   };
 
@@ -235,7 +237,10 @@ export function AIPanel({ style }: AIPanelProps) {
     try {
       await invoke<any>("builtin_llm_stop", { options: { modelId } });
       await refreshBuiltinInfo(modelId);
-    } catch { /* ignore */ }
+    } catch (err) {
+      const msg = typeof err === 'string' ? err : (err as any)?.message || String(err);
+      showWarning(t('停止失败: ', 'Stop failed: ') + msg);
+    }
     setBuiltinActionLoading(prev => ({ ...prev, [modelId]: false }));
   };
 
@@ -411,7 +416,11 @@ export function AIPanel({ style }: AIPanelProps) {
   
   // 复制单条消息
   const copyMessage = async (content: string) => {
-    await navigator.clipboard.writeText(content);
+    try {
+      await navigator.clipboard.writeText(content);
+    } catch {
+      showWarning(t('复制失败', 'Copy failed'));
+    }
   };
   
   // 切换消息选中状态
@@ -446,6 +455,7 @@ export function AIPanel({ style }: AIPanelProps) {
   };
   
   const handleChat = async () => {
+    if (contexts.chat.isLoading) return;
     const textToProcess = (activeTab === 'chat' ? chatInput : inputText).trim();
     if (!textToProcess) return;
     

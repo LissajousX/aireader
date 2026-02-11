@@ -412,3 +412,145 @@ describe("mirror probe status filter (Rust logic parity)", () => {
     expect(shouldAcceptProbeResponse(301)).toBe(false);
   });
 });
+
+// ─── SetupWizard: Ollama/OpenAI save validation ───
+
+describe("SetupWizard save validation", () => {
+  describe("Ollama save requires non-empty URL and model", () => {
+    function canSaveOllama(url: string, model: string): boolean {
+      return !!(url.trim() && model.trim());
+    }
+
+    it("allows save with valid values", () => {
+      expect(canSaveOllama("http://localhost:11434", "qwen3:8b")).toBe(true);
+    });
+
+    it("rejects empty URL", () => {
+      expect(canSaveOllama("", "qwen3:8b")).toBe(false);
+    });
+
+    it("rejects whitespace-only URL", () => {
+      expect(canSaveOllama("   ", "qwen3:8b")).toBe(false);
+    });
+
+    it("rejects empty model", () => {
+      expect(canSaveOllama("http://localhost:11434", "")).toBe(false);
+    });
+
+    it("rejects both empty", () => {
+      expect(canSaveOllama("", "")).toBe(false);
+    });
+  });
+
+  describe("OpenAI API save requires non-empty URL, key, and model", () => {
+    function canSaveApi(url: string, key: string, model: string): boolean {
+      return !!(url.trim() && key.trim() && model.trim());
+    }
+
+    it("allows save with all valid values", () => {
+      expect(canSaveApi("https://api.openai.com/v1", "sk-abc", "gpt-4o-mini")).toBe(true);
+    });
+
+    it("rejects empty base URL", () => {
+      expect(canSaveApi("", "sk-abc", "gpt-4o-mini")).toBe(false);
+    });
+
+    it("rejects empty API key", () => {
+      expect(canSaveApi("https://api.openai.com/v1", "", "gpt-4o-mini")).toBe(false);
+    });
+
+    it("rejects empty model", () => {
+      expect(canSaveApi("https://api.openai.com/v1", "sk-abc", "")).toBe(false);
+    });
+
+    it("rejects all empty", () => {
+      expect(canSaveApi("", "", "")).toBe(false);
+    });
+  });
+});
+
+// ─── AIPanel: handleChat streaming guard ───
+
+describe("AIPanel chat streaming guard", () => {
+  function shouldBlockChat(isLoading: boolean, text: string): boolean {
+    if (isLoading) return true;
+    if (!text.trim()) return true;
+    return false;
+  }
+
+  it("blocks when streaming is in progress", () => {
+    expect(shouldBlockChat(true, "hello")).toBe(true);
+  });
+
+  it("blocks when text is empty", () => {
+    expect(shouldBlockChat(false, "")).toBe(true);
+  });
+
+  it("blocks when text is whitespace only", () => {
+    expect(shouldBlockChat(false, "   ")).toBe(true);
+  });
+
+  it("allows when not loading and text is present", () => {
+    expect(shouldBlockChat(false, "hello")).toBe(false);
+  });
+
+  it("blocks even with text when loading", () => {
+    expect(shouldBlockChat(true, "some question")).toBe(true);
+  });
+});
+
+// ─── Batch import resilience ───
+
+describe("batch import partial failure handling", () => {
+  it("collects successful imports and failed file names separately", async () => {
+    const paths = ["a.pdf", "b.epub", "c.txt"];
+    const imported: string[] = [];
+    const failed: string[] = [];
+
+    for (const p of paths) {
+      try {
+        if (p === "b.epub") throw new Error("disk full");
+        imported.push("/dest/" + p);
+      } catch {
+        failed.push(p.split(/[/\\]/).pop() || p);
+      }
+    }
+
+    expect(imported).toEqual(["/dest/a.pdf", "/dest/c.txt"]);
+    expect(failed).toEqual(["b.epub"]);
+  });
+
+  it("handles all files failing", async () => {
+    const paths = ["x.pdf", "y.pdf"];
+    const imported: string[] = [];
+    const failed: string[] = [];
+
+    for (const p of paths) {
+      try {
+        throw new Error("fail");
+      } catch {
+        failed.push(p.split(/[/\\]/).pop() || p);
+      }
+    }
+
+    expect(imported).toEqual([]);
+    expect(failed).toEqual(["x.pdf", "y.pdf"]);
+  });
+
+  it("handles all files succeeding", async () => {
+    const paths = ["a.pdf", "b.epub"];
+    const imported: string[] = [];
+    const failed: string[] = [];
+
+    for (const p of paths) {
+      try {
+        imported.push("/dest/" + p);
+      } catch {
+        failed.push(p.split(/[/\\]/).pop() || p);
+      }
+    }
+
+    expect(imported).toEqual(["/dest/a.pdf", "/dest/b.epub"]);
+    expect(failed).toEqual([]);
+  });
+});

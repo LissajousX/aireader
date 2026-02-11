@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, Trash2, Clock, BookOpen, Search, FolderOpen, CheckSquare, Square } from "lucide-react";
+import { FileText, Trash2, Clock, BookOpen, Search, FolderOpen, CheckSquare, Square, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useDocumentStore } from "@/stores/documentStore";
 import { useDocumentCacheStore } from "@/stores/documentCacheStore";
@@ -25,6 +25,7 @@ export function DocumentLibrary({ onImportFiles, onImportFolder, onClose }: Docu
   const [typeFilter, setTypeFilter] = useState<"all" | Document["type"]>("all");
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchDeleting, setBatchDeleting] = useState(false);
   const bi = (zh: string, en: string) => lang === 'en' ? en : zh;
 
   const filteredDocs = documents
@@ -89,7 +90,7 @@ export function DocumentLibrary({ onImportFiles, onImportFolder, onClose }: Docu
   };
 
   const handleBatchDelete = async () => {
-    if (selectedIds.size === 0) return;
+    if (selectedIds.size === 0 || batchDeleting) return;
     const { confirm } = await import("@tauri-apps/plugin-dialog");
     const ok = await confirm(
       bi(`确定要删除选中的 ${selectedIds.size} 个文档吗？副本文件也会被删除。`, `Delete ${selectedIds.size} selected document(s)? Copied files will also be removed.`),
@@ -97,17 +98,22 @@ export function DocumentLibrary({ onImportFiles, onImportFolder, onClose }: Docu
     );
     if (!ok) return;
 
-    const toDelete = documents.filter(d => selectedIds.has(d.id));
-    setDocuments(documents.filter(d => !selectedIds.has(d.id)));
-    for (const doc of toDelete) {
-      removeFromCache(doc.path);
-      if (currentDocument?.id === doc.id) setCurrentDocument(null);
-      if (doc.isCopy === true) {
-        try { await invoke("delete_document_copy", { path: doc.path, documentsDir: documentsDir || null }); } catch {}
+    setBatchDeleting(true);
+    try {
+      const toDelete = documents.filter(d => selectedIds.has(d.id));
+      setDocuments(documents.filter(d => !selectedIds.has(d.id)));
+      for (const doc of toDelete) {
+        removeFromCache(doc.path);
+        if (currentDocument?.id === doc.id) setCurrentDocument(null);
+        if (doc.isCopy === true) {
+          try { await invoke("delete_document_copy", { path: doc.path, documentsDir: documentsDir || null }); } catch {}
+        }
       }
+      setSelectedIds(new Set());
+      setSelectMode(false);
+    } finally {
+      setBatchDeleting(false);
     }
-    setSelectedIds(new Set());
-    setSelectMode(false);
   };
 
   const handleOpenFolder = async (filePath: string) => {
@@ -227,8 +233,8 @@ export function DocumentLibrary({ onImportFiles, onImportFolder, onClose }: Docu
             ))}
             <div className="ml-auto flex items-center gap-1.5">
               {selectMode && selectedIds.size > 0 && (
-                <Button size="sm" variant="destructive" className="rounded-lg text-xs h-7" onClick={handleBatchDelete}>
-                  <Trash2 className="w-3 h-3 mr-1" />{bi(`删除 (${selectedIds.size})`, `Delete (${selectedIds.size})`)}
+                <Button size="sm" variant="destructive" className="rounded-lg text-xs h-7" onClick={handleBatchDelete} disabled={batchDeleting}>
+                  {batchDeleting ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Trash2 className="w-3 h-3 mr-1" />}{bi(`删除 (${selectedIds.size})`, `Delete (${selectedIds.size})`)}
                 </Button>
               )}
               {selectMode && (

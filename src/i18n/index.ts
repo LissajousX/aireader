@@ -114,6 +114,8 @@ const ZH: MessageDict = {
   "app.import_option.msg": "是否导入为副本？\n\n- 是：复制到应用数据目录，后续移动/删除原文件不影响阅读\n- 否：直接读取原文件路径",
   "app.import_option.ok": "导入副本",
   "app.import_option.cancel": "直接打开",
+  "app.import_failed_partial": "以下文件导入失败：{files}",
+  "app.import_error_title": "导入错误",
 };
 
 const EN: MessageDict = {
@@ -224,6 +226,8 @@ const EN: MessageDict = {
   "app.import_option.msg": "Import as a copy?\n\n- Yes: copy into app data folder; moving/deleting the original won't affect reading\n- No: read from original path",
   "app.import_option.ok": "Import Copy",
   "app.import_option.cancel": "Open Directly",
+  "app.import_failed_partial": "Failed to import: {files}",
+  "app.import_error_title": "Import Error",
 };
 
 const ALL: Record<UiLanguage, MessageDict> = {

@@ -439,26 +439,43 @@ function App() {
 
       if (importCopy) {
         const imported: string[] = [];
+        const importedOriginals: string[] = [];
+        const failed: string[] = [];
         for (const p of paths) {
-          const selectedType = getDocType(p);
-          if (selectedType === "md") {
-            imported.push(
-              await invoke<string>("import_markdown_copy", {
-                sourcePath: p,
-                destDir: documentsDir || null,
-              })
-            );
-          } else {
-            imported.push(
-              await invoke<string>("import_document_copy", {
-                sourcePath: p,
-                destDir: documentsDir || null,
-              })
-            );
+          try {
+            const selectedType = getDocType(p);
+            if (selectedType === "md") {
+              imported.push(
+                await invoke<string>("import_markdown_copy", {
+                  sourcePath: p,
+                  destDir: documentsDir || null,
+                })
+              );
+            } else {
+              imported.push(
+                await invoke<string>("import_document_copy", {
+                  sourcePath: p,
+                  destDir: documentsDir || null,
+                })
+              );
+            }
+            importedOriginals.push(p);
+          } catch (err) {
+            console.warn(`[App] Failed to import "${p}":`, err);
+            failed.push(p.split(/[/\\]/).pop() || p);
           }
         }
-        const isBatch = imported.length > 1;
-        addPathsToLibrary(imported, !isBatch, { isCopy: true, originalPaths: paths });
+        if (imported.length > 0) {
+          const isBatch = imported.length > 1;
+          addPathsToLibrary(imported, !isBatch, { isCopy: true, originalPaths: importedOriginals });
+        }
+        if (failed.length > 0) {
+          const { message } = await import("@tauri-apps/plugin-dialog");
+          await message(
+            t("app.import_failed_partial").replace("{files}", failed.join(", ")) || `Failed to import: ${failed.join(", ")}`,
+            { title: t("app.import_error_title") || "Import Error", kind: "error" }
+          );
+        }
       } else {
         // Open directly — use original paths without copying
         const isBatch = paths.length > 1;
