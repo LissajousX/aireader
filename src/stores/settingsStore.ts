@@ -204,7 +204,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   markdownScale: (() => {
     const raw = localStorage.getItem('markdown_scale');
     const v = raw ? Number.parseFloat(raw) : NaN;
-    return Number.isFinite(v) ? v : 0.75;
+    return Number.isFinite(v) ? v : 0.8;
   })(),
   prompts: { ...DEFAULT_PROMPTS },
   builtinDownloadUrls: {},
