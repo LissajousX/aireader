@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Menu, Moon, Sun, Sparkles } from "lucide-react";
+import { Menu, Moon, Sun, Bot } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useDocumentStore } from "@/stores/documentStore";
 import { useI18n } from "@/i18n";
@@ -80,8 +80,7 @@ export function Header() {
             className="h-9 px-3"
             title={aiPanelOpen ? t("ai.close") : t("ai.open")}
           >
-            <Sparkles className="w-4 h-4 mr-2" />
-            {t("common.ai_assistant")}
+            <Bot className="w-4 h-4" />
           </Button>
         </div>
       </header>

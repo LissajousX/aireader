@@ -17,7 +17,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { isSingleCJKWord, isSingleWord } from "@/services/dictionary";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useI18n } from "@/i18n";
-import { Menu, Moon, Sun, Sparkles, X, PanelLeftOpen } from "lucide-react";
+import { Menu, Moon, Sun, Bot, X, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import type { TextSelection, Document } from "@/types";
 
@@ -580,8 +580,7 @@ function App() {
                 onClick={toggleAIPanel}
                 className="h-7 px-2.5 text-xs"
               >
-                <Sparkles className="w-3.5 h-3.5 mr-1" />
-                {t("common.ai_assistant")}
+                <Bot className="w-3.5 h-3.5" />
               </Button>
             </div>
           </div>

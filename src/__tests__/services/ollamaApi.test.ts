@@ -1,5 +1,47 @@
 /// <reference types="vitest/globals" />
-import { formatModelSize } from "@/services/ollamaApi";
+import { formatModelSize, fetchOllamaModels, testOllamaConnection } from "@/services/ollamaApi";
+import { invoke } from "@tauri-apps/api/core";
+
+const mockInvoke = invoke as ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+  mockInvoke.mockReset();
+});
+
+describe("fetchOllamaModels", () => {
+  it("returns model list from invoke", async () => {
+    const models = [{ name: "llama3:8b", modified_at: "2025-01-01", size: 4_000_000_000 }];
+    mockInvoke.mockResolvedValueOnce(models);
+
+    const result = await fetchOllamaModels("http://localhost:11434");
+    expect(result).toEqual(models);
+    expect(mockInvoke).toHaveBeenCalledWith("ollama_list_models", { baseUrl: "http://localhost:11434" });
+  });
+
+  it("returns empty array on error", async () => {
+    mockInvoke.mockRejectedValueOnce(new Error("connection refused"));
+
+    const result = await fetchOllamaModels("http://localhost:11434");
+    expect(result).toEqual([]);
+  });
+});
+
+describe("testOllamaConnection", () => {
+  it("returns true when connected", async () => {
+    mockInvoke.mockResolvedValueOnce(true);
+
+    const result = await testOllamaConnection("http://localhost:11434");
+    expect(result).toBe(true);
+    expect(mockInvoke).toHaveBeenCalledWith("ollama_test_connection", { baseUrl: "http://localhost:11434" });
+  });
+
+  it("returns false on error", async () => {
+    mockInvoke.mockRejectedValueOnce(new Error("timeout"));
+
+    const result = await testOllamaConnection("http://localhost:11434");
+    expect(result).toBe(false);
+  });
+});
 
 describe("formatModelSize", () => {
   it("formats bytes < 1GB as MB", () => {

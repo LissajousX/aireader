@@ -1875,17 +1875,17 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
         {/* EPUB 渲染容器 - 始终存在以便 ref 可用 */}
         <div
           ref={viewerRef}
-          className="flex-1 overflow-hidden"
+          className="flex-1 overflow-hidden bg-inherit"
           style={{
             filter: effectiveDocDark ? 'invert(0.88) hue-rotate(180deg)' : undefined,
             minHeight: '400px',
             minWidth: '300px',
             width: '100%',
             height: '100%',
-            opacity: pageTurnFade ? 0.35 : 1,
+            opacity: pageTurnFade ? 0.75 : 1,
             transition: pageTurnFade
-              ? 'opacity 80ms ease-in'
-              : 'opacity 200ms ease-out',
+              ? 'opacity 100ms ease-in'
+              : 'opacity 250ms ease-out',
             willChange: pageTurnFade ? 'opacity' : 'auto',
           }}
         />

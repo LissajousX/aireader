@@ -881,6 +881,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     try {
       setBuiltinError(null);
       setBuiltinGlobalLoading(true);
+      setDownloadProgress(null);
       const { rtKey: erKey, cudartKey: ecKey } = getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion);
       await invoke<any>("builtin_llm_ensure_running", { options: { modelId: builtinModelId, mode: "auto", computeMode: builtinComputeMode, gpuBackend: builtinGpuBackend, gpuLayers: builtinGpuLayers, cudaVersion: builtinCudaVersion, runtimeUrl: builtinDownloadUrls[erKey] || undefined, cudartUrl: builtinDownloadUrls[ecKey ?? ''] || undefined }, onProgress: createProgressChannel() });
       setStartedConfig({ modelId: builtinModelId, cm: builtinComputeMode, gb: builtinGpuBackend, cv: builtinCudaVersion, gl: builtinGpuLayers });
@@ -894,6 +895,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       if (!/cancelled/i.test(msg)) setBuiltinError(msg);
     } finally {
       setBuiltinGlobalLoading(false);
+      setDownloadProgress(null);
     }
   };
 

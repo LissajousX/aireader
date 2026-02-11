@@ -761,7 +761,7 @@ export function AIPanel({ style }: AIPanelProps) {
     <div className="h-full bg-card border-l border-border/60 flex flex-col" style={style}>
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/60">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-sm">{t("AI 助手", "AI")}</span>
+          <Bot className="w-4 h-4 text-primary" />
           {/* 模型选择器 */}
           <div className="flex items-center gap-2">
             <div className="relative" ref={modelSelectRef}>
