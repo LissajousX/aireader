@@ -239,6 +239,39 @@ fn runtime_dir(llm_dir: &Path, compute_mode: &str, gpu_backend: &str, cuda_versi
     }
 }
 
+/// Check if CUDA runtime DLLs (cublas) are present in the given directory (recursive).
+#[cfg(target_os = "windows")]
+fn cuda_dlls_present(dir: &Path) -> bool {
+    if !dir.exists() { return false; }
+    for entry in walkdir::WalkDir::new(dir).max_depth(3).into_iter().filter_map(|e| e.ok()) {
+        if !entry.file_type().is_file() { continue; }
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        if name.starts_with("cublas64") && name.ends_with(".dll") {
+            return true;
+        }
+    }
+    false
+}
+
+/// Build a PATH string that prepends the runtime directory (and optionally the exe's parent dir)
+/// so that CUDA/Vulkan DLLs next to the exe or in the runtime root are found by Windows DLL loader.
+#[cfg(target_os = "windows")]
+fn prepend_runtime_to_path(exe_path: &Path, rt_dir: &Path) -> std::ffi::OsString {
+    use std::ffi::OsString;
+    let system_path = std::env::var_os("PATH").unwrap_or_default();
+    let mut new_path = OsString::new();
+    // Add the exe's parent directory first (highest priority)
+    if let Some(parent) = exe_path.parent() {
+        new_path.push(parent);
+        new_path.push(";");
+    }
+    // Add the runtime root directory
+    new_path.push(rt_dir);
+    new_path.push(";");
+    new_path.push(&system_path);
+    new_path
+}
+
 fn normalize_compute_mode(raw: Option<&str>) -> &'static str {
     match raw {
         Some("gpu") => "gpu",
@@ -953,6 +986,45 @@ async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode:
 
     // Return early if already installed — do NOT create dirs eagerly
     if let Some(server) = find_llama_server(&rt) {
+        // For CUDA on Windows, also verify that cudart DLLs (cublas) are present.
+        // If missing, attempt to download cudart only (not the full runtime).
+        #[cfg(target_os = "windows")]
+        if (compute_mode == "gpu" || compute_mode == "hybrid")
+            && gpu_backend.eq_ignore_ascii_case("cuda")
+            && !cuda_dlls_present(&rt)
+        {
+            log::warn!("[builtin_llm] CUDA server found but cublas DLLs missing in {}, attempting cudart download", rt.display());
+            let cv = cuda_version;
+            let cudart_zip = if cv == "13.1" { "cudart-llama-bin-win-cuda-13.1-x64.zip" } else { "cudart-llama-bin-win-cuda-12.4-x64.zip" };
+            // Try bundled cudart first
+            let mut found = false;
+            if let Ok(rd) = app.path().resource_dir() {
+                for z in [rd.join("llm").join("runtime").join(cudart_zip), rd.join("resources").join("llm").join("runtime").join(cudart_zip)] {
+                    if z.exists() {
+                        if let Err(e) = safe_archive_extract_with_progress(&z, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime") {
+                            log::warn!("[builtin_llm] Failed to extract bundled cudart: {}", e);
+                        } else { found = true; }
+                        break;
+                    }
+                }
+            }
+            // Download if still missing
+            if !found && !cuda_dlls_present(&rt) {
+                let base_urls = default_runtime_base_urls();
+                let urls: Vec<String> = base_urls.iter().map(|b| format!("{}/{}", b, cudart_zip)).collect();
+                let refs: Vec<&str> = if let Some(c) = custom_cudart_url.filter(|s| !s.is_empty()) { vec![c] } else { urls.iter().map(|s| s.as_str()).collect() };
+                let cp = rt.join(cudart_zip);
+                match download_to_file(app, progress_ch, &refs, &cp, "Downloading CUDA runtime (cublas)", cancel).await {
+                    Ok(_) => {
+                        if let Err(e) = safe_archive_extract_with_progress(&cp, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime") {
+                            log::warn!("[builtin_llm] Failed to extract cudart: {}", e);
+                        }
+                        let _ = std::fs::remove_file(&cp);
+                    }
+                    Err(e) => log::warn!("[builtin_llm] Failed to download cudart: {} (CUDA may fall back to CPU)", e),
+                }
+            }
+        }
         return Ok(server);
     }
 
@@ -1040,7 +1112,9 @@ async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode:
             ];
             for z in cudart_candidates {
                 if z.exists() {
-                    let _ = safe_archive_extract_with_progress(&z, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime");
+                    if let Err(e) = safe_archive_extract_with_progress(&z, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime") {
+                        log::warn!("[builtin_llm] Failed to extract bundled cudart from {}: {}", z.display(), e);
+                    }
                     break;
                 }
             }
@@ -1071,9 +1145,15 @@ async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode:
             cudart_urls.iter().map(|s| s.as_str()).collect()
         };
         let cudart_path = rt.join(cudart_name);
-        let _ = download_to_file(app, progress_ch, &cudart_url_refs, &cudart_path, "Downloading CUDA runtime", cancel).await;
-        let _ = safe_archive_extract_with_progress(&cudart_path, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime");
-        let _ = std::fs::remove_file(&cudart_path);
+        match download_to_file(app, progress_ch, &cudart_url_refs, &cudart_path, "Downloading CUDA runtime", cancel).await {
+            Ok(_) => {
+                if let Err(e) = safe_archive_extract_with_progress(&cudart_path, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime") {
+                    log::warn!("[builtin_llm] Failed to extract cudart: {}", e);
+                }
+                let _ = std::fs::remove_file(&cudart_path);
+            }
+            Err(e) => log::warn!("[builtin_llm] Failed to download cudart (cublas DLLs): {}", e),
+        }
     }
 
     let runtime_url_refs: Vec<&str> = if let Some(custom) = custom_runtime_url.filter(|s| !s.is_empty()) {
@@ -2097,7 +2177,7 @@ async fn ensure_running_impl(
 
     let port = pick_free_port()?;
 
-    let mut cmd = Command::new(server);
+    let mut cmd = Command::new(&server);
     cmd.arg("-m")
         .arg(&model)
         .arg("--host")
@@ -2119,10 +2199,13 @@ async fn ensure_running_impl(
         cmd.arg("--n-gpu-layers").arg("0");
     }
 
+    // Ensure CUDA/Vulkan DLLs are discoverable by prepending runtime dir to PATH
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let rt = runtime_dir(&state.llm_dir, compute_mode, gpu_backend, cuda_version);
+        cmd.env("PATH", prepend_runtime_to_path(&server, &rt));
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
@@ -2460,18 +2543,16 @@ pub async fn builtin_llm_benchmark(
     let cuda_version = normalize_cuda_version(options.as_ref().and_then(|o| o.cuda_version.as_deref()));
     let gpu_layers = options.as_ref().and_then(|o| o.gpu_layers).unwrap_or(20);
 
-    // Find llama-bench in runtime directory, fall back to CPU runtime
+    // Find llama-bench in the target runtime directory.
+    // Do NOT fall back to CPU runtime for GPU benchmarks — CPU llama-bench lacks GPU support
+    // and would silently produce CPU-only results even with -ngl 999.
     let rt = runtime_dir(&state.llm_dir, compute_mode, gpu_backend, cuda_version);
     let bench_exe = find_llama_bench(&rt)
-        .or_else(|| {
-            if compute_mode != "cpu" {
-                let cpu_rt = runtime_dir(&state.llm_dir, "cpu", "vulkan", "12.4");
-                find_llama_bench(&cpu_rt)
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| format!("llama-bench not found in {} (also checked CPU runtime)", rt.display()))?;
+        .ok_or_else(|| format!(
+            "llama-bench not found in {}. Please install the {} runtime first.",
+            rt.display(),
+            if compute_mode == "cpu" { "CPU" } else { gpu_backend }
+        ))?;
 
     // Find 0.6B benchmark model
     let model_path = model_file_path(&state.models_dir.read().unwrap(), "qwen3_0_6b_q4_k_m");
@@ -2489,8 +2570,8 @@ pub async fn builtin_llm_benchmark(
     #[cfg(target_os = "windows")]
     let output = {
         use std::os::windows::process::CommandExt;
-        Command::new(&bench_exe)
-            .args([
+        let mut cmd = Command::new(&bench_exe);
+        cmd.args([
                 "-m", &model_path.to_string_lossy(),
                 "-p", "0",        // skip prompt processing test
                 "-n", "64",       // generate 64 tokens
@@ -2498,8 +2579,9 @@ pub async fn builtin_llm_benchmark(
                 "-ngl", &ngl,
                 "-o", "json",
             ])
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .output()
+            .env("PATH", prepend_runtime_to_path(&bench_exe, &rt))
+            .creation_flags(0x08000000); // CREATE_NO_WINDOW
+        cmd.output()
             .map_err(|e| format!("failed to run llama-bench: {e}"))?
     };
     #[cfg(not(target_os = "windows"))]

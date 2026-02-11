@@ -17,7 +17,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { isSingleCJKWord, isSingleWord } from "@/services/dictionary";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useI18n } from "@/i18n";
-import { Menu, Moon, Sun, Bot, X, PanelLeftOpen } from "lucide-react";
+import { Menu, Moon, Sun, Bot, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import type { TextSelection, Document } from "@/types";
 
@@ -563,16 +563,7 @@ function App() {
         </>
       )}
       <main ref={mainRef} className="flex-1 flex flex-col overflow-hidden relative">
-        {/* Sidebar expand button — welcome page only (document view uses Menu button in toolbar) */}
-        {!sidebarOpen && !currentDocument && (
-          <button
-            onClick={toggleSidebar}
-            className="absolute left-3 top-3 z-20 flex items-center justify-center w-8 h-8 rounded-lg bg-background/70 hover:bg-background/90 border border-border/50 hover:border-border backdrop-blur-md shadow-sm transition-all cursor-pointer group"
-            title={t('sidebar.show')}
-          >
-            <PanelLeftOpen className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-          </button>
-        )}
+        {/* Sidebar expand button handled by WelcomeScreen toolbar (welcome) or floating toolbar (document view) */}
         {/* Floating toolbar for document view */}
         {currentDocument && (
           <div className="flex items-center justify-between px-2 py-1 border-b border-border/40 bg-background/80 backdrop-blur-sm z-10 flex-shrink-0">

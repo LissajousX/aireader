@@ -1,4 +1,4 @@
-import { BookOpen, FileText, Sparkles, StickyNote, MessageSquareText, Languages, Library, Settings, HelpCircle, FolderOpen, Menu, Moon, Sun, AlertTriangle } from "lucide-react";
+import { BookOpen, FileText, Sparkles, StickyNote, MessageSquareText, Languages, Library, Settings, HelpCircle, FolderOpen, Moon, Sun, AlertTriangle, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useDocumentStore } from "@/stores/documentStore";
@@ -38,8 +38,8 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
       {/* Top toolbar */}
       <div className="absolute top-0 left-0 right-0 z-10 px-3 py-2">
         <div className="flex items-center justify-between gap-2">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleSidebar} title={t('common.library')}>
-            <Menu className="w-4 h-4" />
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleSidebar} title={t('sidebar.show')}>
+            <PanelLeftOpen className="w-4 h-4" />
           </Button>
           <div className="flex items-center gap-1.5">
             <div className="flex items-center rounded-lg border border-border/60 bg-card/60 backdrop-blur overflow-hidden">
@@ -100,7 +100,10 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
                 <span className="text-primary">Ai</span><span className="text-foreground/85">Reader</span>
               </h1>
             </div>
-            <p className="mt-3 text-sm text-muted-foreground max-w-[60ch] leading-relaxed pl-11">
+            <p className="mt-1.5 text-xs font-medium tracking-widest uppercase text-primary/60 pl-11">
+              {t("welcome.tagline")}
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground max-w-[60ch] leading-relaxed pl-11">
               {t("welcome.subtitle")}
             </p>
           </div>
@@ -157,9 +160,9 @@ export function WelcomeScreen({ onOpenFile, onImportFolder, isDark, onToggleThem
 
           {/* Feature cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="group rounded-xl border border-amber-300/40 dark:border-amber-500/30 bg-gradient-to-br from-amber-100/80 to-orange-50/60 dark:from-amber-500/15 dark:to-orange-500/10 hover:from-amber-200/90 hover:to-orange-100/70 dark:hover:from-amber-500/25 dark:hover:to-orange-500/15 shadow-sm hover:shadow-md hover:border-amber-400/60 dark:hover:border-amber-400/50 transition-all p-4">
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-200/80 to-orange-200/50 dark:from-amber-500/30 dark:to-orange-500/20 flex items-center justify-center group-hover:from-amber-300/80 group-hover:to-orange-200/60 dark:group-hover:from-amber-500/40 dark:group-hover:to-orange-500/30 transition-colors mb-2.5">
-                <Sparkles className="w-4.5 h-4.5 text-amber-600 dark:text-amber-400" />
+            <div className="group rounded-xl border border-blue-300/40 dark:border-blue-500/30 bg-gradient-to-br from-blue-100/80 to-indigo-50/60 dark:from-blue-500/15 dark:to-indigo-500/10 hover:from-blue-200/90 hover:to-indigo-100/70 dark:hover:from-blue-500/25 dark:hover:to-indigo-500/15 shadow-sm hover:shadow-md hover:border-blue-400/60 dark:hover:border-blue-400/50 transition-all p-4">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-200/80 to-indigo-200/50 dark:from-blue-500/30 dark:to-indigo-500/20 flex items-center justify-center group-hover:from-blue-300/80 group-hover:to-indigo-200/60 dark:group-hover:from-blue-500/40 dark:group-hover:to-indigo-500/30 transition-colors mb-2.5">
+                <Languages className="w-4.5 h-4.5 text-blue-600 dark:text-blue-400" />
               </div>
               <div className="font-medium text-sm">{t("welcome.feature.select_translate.title")}</div>
               <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{t("welcome.feature.select_translate.desc")}</div>

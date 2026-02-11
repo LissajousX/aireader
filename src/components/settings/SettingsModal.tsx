@@ -1178,7 +1178,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               </p>
 
               {/* ── Section: Built-in Local AI ── */}
-              <div>
+              <div className="space-y-3">
                 <div className="flex items-center gap-2 mb-2 px-1">
                   <Zap className="w-3.5 h-3.5 text-amber-500" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('内置本地 AI', 'Built-in Local AI')}</span>
@@ -1389,7 +1389,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                         type="button"
                         onClick={() => setBuiltinAdvancedMode(true)}
                         disabled={isAnyBusy}
-                        className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border/60 rounded-lg py-2 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                        className="w-full flex items-center justify-center gap-1.5 text-xs font-medium text-primary/80 hover:text-primary border border-primary/30 rounded-lg py-2.5 hover:bg-primary/5 hover:border-primary/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
                       >
                         <Settings className="w-3.5 h-3.5" />
                         {b('高级配置', 'Advanced Settings')}
@@ -1404,7 +1404,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                         type="button"
                         onClick={() => setBuiltinAdvancedMode(false)}
                         disabled={isAnyBusy}
-                        className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 border border-primary/30 rounded-lg px-3 py-1.5 hover:bg-primary/5 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                        className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 border border-primary/30 rounded-lg px-3 py-2 hover:bg-primary/5 transition-colors disabled:opacity-50 disabled:pointer-events-none"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
                         {b('返回简易模式', 'Back to Simple Mode')}
