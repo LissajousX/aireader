@@ -35,36 +35,34 @@ This guide has been split into separate language versions:
 
 <table>
 <tr>
-<td colspan="3" align="center"><b>☰ &nbsp; 文档标题 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 🌓 &nbsp; AI &nbsp; ⚙</b></td>
+<td colspan="3" align="center"><b>☰ &nbsp; 文档标题 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 🌓 &nbsp; 🤖</b></td>
 </tr>
 <tr>
 <td width="120" valign="top">
-<b>侧边栏</b><br/>
-🅰 AiReader<br/><br/>
-📂 导入文档<br/><br/>
+<b>侧边栏</b><br/><br/>
++ 导入文档<br/><br/>
 📄 Paper.pdf<br/>
 📘 Novel.epub<br/>
 📝 Notes.md<br/><br/>
-<sub>文档库 · 设置 · 帮助</sub>
+<sub>文档库 · 设置</sub>
 </td>
 <td width="320" align="center" valign="middle">
-<br/><br/>
-📖<br/>
+<br/>
 <b>文档阅读区域</b><br/>
-<sub>PDF / EPUB / Markdown / TXT</sub><br/><br/><br/>
-<sub>◀ ▶ &nbsp; ➖ 100% ➕ &nbsp; 1/42 &nbsp; 🌓</sub><br/>
+<sub>PDF / EPUB / Markdown / TXT</sub><br/><br/>
+<sub>◀ ▶ &nbsp; 100% &nbsp; 1/42</sub><br/>
 <sub>↑ 浮动工具栏</sub><br/>
 </td>
 <td width="160" valign="top">
-<b>AI 助手</b> <sub>内置</sub><br/><br/>
-<code>译</code> · 释 · 聊 · 记<br/><br/>
-<em>选中文本后<br/>自动翻译</em><br/><br/>
+🤖 <sub>内置</sub><br/>
+<code>翻译</code> · 释义 · 对话 · 笔记<br/><br/>
+<em>选中文本 → 自动翻译</em><br/><br/>
 <sub>翻译结果显示区域</sub><br/><br/>
-<sub>💬 输入文本... ➤</sub>
+<sub>💬 输入... ➤</sub>
 </td>
 </tr>
 <tr>
-<td colspan="3" align="center"><sub>所有面板分隔线均可拖动调节宽度</sub></td>
+<td colspan="3" align="center"><sub>↔ 所有面板分隔线均可拖动调节宽度</sub></td>
 </tr>
 </table>
 
@@ -293,36 +291,34 @@ Windows 设置 → 应用 → 搜索 "Aireader" → 卸载。卸载时可勾选�
 
 <table>
 <tr>
-<td colspan="3" align="center"><b>☰ &nbsp; Document Title &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 🌓 &nbsp; AI &nbsp; ⚙</b></td>
+<td colspan="3" align="center"><b>☰ &nbsp; Document Title &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 🌓 &nbsp; 🤖</b></td>
 </tr>
 <tr>
 <td width="120" valign="top">
-<b>Sidebar</b><br/>
-🅰 AiReader<br/><br/>
-📂 Import<br/><br/>
+<b>Sidebar</b><br/><br/>
++ Import<br/><br/>
 📄 Paper.pdf<br/>
 📘 Novel.epub<br/>
 📝 Notes.md<br/><br/>
-<sub>Library · Settings · Help</sub>
+<sub>Library · Settings</sub>
 </td>
 <td width="320" align="center" valign="middle">
-<br/><br/>
-📖<br/>
+<br/>
 <b>Reading Area</b><br/>
-<sub>PDF / EPUB / Markdown / TXT</sub><br/><br/><br/>
-<sub>◀ ▶ &nbsp; ➖ 100% ➕ &nbsp; 1/42 &nbsp; 🌓</sub><br/>
+<sub>PDF / EPUB / Markdown / TXT</sub><br/><br/>
+<sub>◀ ▶ &nbsp; 100% &nbsp; 1/42</sub><br/>
 <sub>↑ Floating Toolbar</sub><br/>
 </td>
 <td width="160" valign="top">
-<b>AI Assistant</b> <sub>Built-in</sub><br/><br/>
+🤖 <sub>Built-in</sub><br/>
 <code>Trans</code> · Expl · Chat · Note<br/><br/>
-<em>Select text to<br/>auto-translate</em><br/><br/>
+<em>Select text → Auto translate</em><br/><br/>
 <sub>Translation results</sub><br/><br/>
 <sub>💬 Input... ➤</sub>
 </td>
 </tr>
 <tr>
-<td colspan="3" align="center"><sub>All panel dividers are draggable to resize</sub></td>
+<td colspan="3" align="center"><sub>↔ All panel dividers are draggable to resize</sub></td>
 </tr>
 </table>
 

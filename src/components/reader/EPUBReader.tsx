@@ -31,7 +31,6 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
   const opfParentDirUrlRef = useRef<string>('');
   const opfDirNameRef = useRef<string>('');
   const pageTurnInFlightRef = useRef(false);
-  const [pageTurnFade, setPageTurnFade] = useState(false);
   const pendingTurnRef = useRef(false);
   const pendingTurnTimerRef = useRef<number | null>(null);
   const lastWheelTurnAtRef = useRef(0);
@@ -324,7 +323,6 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
 
     pageTurnInFlightRef.current = true;
     pendingTurnRef.current = true;
-    setPageTurnFade(true);
     if (pendingTurnTimerRef.current) {
       window.clearTimeout(pendingTurnTimerRef.current);
       pendingTurnTimerRef.current = null;
@@ -333,7 +331,6 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
       pendingTurnTimerRef.current = null;
       pendingTurnRef.current = false;
       pageTurnInFlightRef.current = false;
-      setPageTurnFade(false);
     }, 2500);
 
     try {
@@ -345,7 +342,6 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
     } catch {
       pendingTurnRef.current = false;
       pageTurnInFlightRef.current = false;
-      setPageTurnFade(false);
     }
   };
 
@@ -1566,7 +1562,6 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
             if (pendingTurnRef.current) {
               pendingTurnRef.current = false;
               pageTurnInFlightRef.current = false;
-              setPageTurnFade(false);
               if (pendingTurnTimerRef.current) {
                 window.clearTimeout(pendingTurnTimerRef.current);
                 pendingTurnTimerRef.current = null;
@@ -1882,11 +1877,6 @@ export function EPUBReader({ filePath, onTextSelect, onFatalError }: EPUBReaderP
             minWidth: '300px',
             width: '100%',
             height: '100%',
-            opacity: pageTurnFade ? 0.75 : 1,
-            transition: pageTurnFade
-              ? 'opacity 100ms ease-in'
-              : 'opacity 250ms ease-out',
-            willChange: pageTurnFade ? 'opacity' : 'auto',
           }}
         />
       </div>

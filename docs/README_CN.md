@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="screenshots/icon.png" width="80" alt="Aireader" />
+<img src="../screenshots/icon.png" width="80" alt="Aireader" />
 
 # Aireader
 
@@ -8,12 +8,12 @@
 
 **完全离线的 AI 阅读助手 — 翻译、解释、对话、笔记，一切在本地完成**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../LICENSE)
 [![Tauri 2.0](https://img.shields.io/badge/Tauri-2.0-orange)](https://tauri.app)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-b7966-green)](https://github.com/ggml-org/llama.cpp)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20·%20macOS%20·%20Ubuntu-lightgrey)]()
 
-**[English](README_EN.md)** · **[用户指南](USER_GUIDE_CN.md)** · **[User Guide](USER_GUIDE_EN.md)**
+**[English](README_EN.md)** · **[用户指南](USER_GUIDE_CN.md)** · **[User Guide](USER_GUIDE_EN.md)** · **[中文首页](../README.md)**
 
 </div>
 
@@ -27,17 +27,17 @@
 
 | 主界面 | 选中翻译 |
 |:---:|:---:|
-| ![主界面](screenshots/main-interface.png) | ![选中翻译](screenshots/select-translate.png) |
+| ![主界面](../screenshots/main-interface.png) | ![选中翻译](../screenshots/select-translate.png) |
 
 <details>
 <summary><b>更多截图</b></summary>
 
 | 功能 | 中文 | English |
 |:---|:---:|:---:|
-| AI 对话 | ![](screenshots/ai-chat.png) | ![](screenshots/ai-chat-en.png) |
-| 深色主题 | ![](screenshots/dark-theme.png) | ![](screenshots/dark-theme-en.png) |
-| 词典弹窗 | ![](screenshots/dictionary-popup.png) | ![](screenshots/dictionary-popup-en.png) |
-| 快速配置 | ![](screenshots/quick-setup.png) | ![](screenshots/quick-setup-en.png) |
+| AI 对话 | ![](../screenshots/ai-chat.png) | ![](../screenshots/ai-chat-en.png) |
+| 深色主题 | ![](../screenshots/dark-theme.png) | ![](../screenshots/dark-theme-en.png) |
+| 词典弹窗 | ![](../screenshots/dictionary-popup.png) | ![](../screenshots/dictionary-popup-en.png) |
+| 快速配置 | ![](../screenshots/quick-setup.png) | ![](../screenshots/quick-setup-en.png) |
 
 </details>
 
@@ -107,6 +107,12 @@ aireader/
 │   │   └── ollama.rs           # Ollama 代理
 │   ├── resources/              # 词典 & 示例文档
 │   └── Cargo.toml
+├── docs/                       # 文档
+│   ├── README_EN.md            # English README
+│   ├── USER_GUIDE.md           # 用户指南 (双语合并版)
+│   ├── USER_GUIDE_CN.md        # 用户指南 (中文)
+│   └── USER_GUIDE_EN.md        # User Guide (English)
+├── screenshots/                # 截图
 └── package.json
 ```
 
@@ -122,4 +128,4 @@ aireader/
 
 ## 📄 许可证
 
-[MIT](LICENSE) © xujiayu
+[MIT](../LICENSE) © xujiayu

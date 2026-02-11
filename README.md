@@ -13,7 +13,7 @@
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-b7966-green)](https://github.com/ggml-org/llama.cpp)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20·%20macOS%20·%20Ubuntu-lightgrey)]()
 
-**[English](README_EN.md)** · **[用户指南](USER_GUIDE_CN.md)** · **[User Guide](USER_GUIDE_EN.md)**
+**[English](docs/README_EN.md)** · **[用户指南](docs/USER_GUIDE_CN.md)** · **[User Guide](docs/USER_GUIDE_EN.md)**
 
 </div>
 
@@ -107,6 +107,12 @@ aireader/
 │   │   └── ollama.rs           # Ollama 代理
 │   ├── resources/              # 词典 & 示例文档
 │   └── Cargo.toml
+├── docs/                       # 文档
+│   ├── README_EN.md            # English README
+│   ├── USER_GUIDE.md           # 用户指南 (双语合并版)
+│   ├── USER_GUIDE_CN.md        # 用户指南 (中文)
+│   └── USER_GUIDE_EN.md        # User Guide (English)
+├── screenshots/                # 截图
 └── package.json
 ```
 

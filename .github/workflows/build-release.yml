@@ -111,7 +111,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Aireader ${{ github.ref_name }}"
-          releaseBody: "See [release notes](https://github.com/${{ github.repository }}/blob/main/releases/${{ github.ref_name }}-release-notes.md) for details."
+          releaseBody: "See [release notes](https://github.com/${{ github.repository }}/blob/main/docs/releases/${{ github.ref_name }}-release-notes.md) for details."
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}

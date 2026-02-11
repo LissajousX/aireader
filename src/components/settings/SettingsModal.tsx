@@ -1024,145 +1024,117 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
           {/* ===== General Tab ===== */}
           {settingsTab === 'general' && (
             <>
-              {/* Language */}
-              <div className="rounded-xl border border-border/60 p-4">
-                <div className="flex items-center gap-2.5 mb-3">
-                  <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                    <Globe className="w-3.5 h-3.5 text-blue-500" />
-                  </div>
-                  <label className="text-sm font-medium">{b('界面语言', 'UI Language')}</label>
+              {/* ── Section: Appearance ── */}
+              <div>
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('外观', 'Appearance')}</span>
                 </div>
-                <div className="flex rounded-lg border border-border p-0.5 bg-muted/30 w-fit">
-                  <button
-                    type="button"
-                    onClick={() => { setUiLanguage('zh'); saveSettings(); }}
-                    className={`px-5 py-1.5 text-sm rounded-md transition-all ${uiLanguage === 'zh' ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    中文
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setUiLanguage('en'); saveSettings(); }}
-                    className={`px-5 py-1.5 text-sm rounded-md transition-all ${uiLanguage === 'en' ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    English
-                  </button>
+                <div className="rounded-xl border border-border/50 bg-card overflow-hidden divide-y divide-border/40">
+                  {/* Language row */}
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm">{b('界面语言', 'Language')}</span>
+                    <div className="flex rounded-lg border border-border/60 p-0.5 bg-muted/30">
+                      <button type="button" onClick={() => { setUiLanguage('zh'); saveSettings(); }}
+                        className={`px-3.5 py-1 text-xs rounded-md transition-all ${uiLanguage === 'zh' ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
+                        中文
+                      </button>
+                      <button type="button" onClick={() => { setUiLanguage('en'); saveSettings(); }}
+                        className={`px-3.5 py-1 text-xs rounded-md transition-all ${uiLanguage === 'en' ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
+                        English
+                      </button>
+                    </div>
+                  </div>
+                  {/* Theme row */}
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm">{b('主题', 'Theme')}</span>
+                    <div className="flex rounded-lg border border-border/60 p-0.5 bg-muted/30">
+                      {([['light', b('浅色', 'Light')], ['dark', b('深色', 'Dark')], ['system', b('跟随系统', 'System')]] as const).map(([v, label]) => (
+                        <button key={v} type="button" onClick={() => { setTheme(v); saveSettings(); }}
+                          className={`px-3 py-1 text-xs rounded-md transition-all ${theme === v ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Theme */}
-              <div className="rounded-xl border border-border/60 p-4">
-                <div className="flex items-center gap-2.5 mb-3">
-                  <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center">
-                    <Settings className="w-3.5 h-3.5 text-purple-500" />
-                  </div>
-                  <label className="text-sm font-medium">{b('主题', 'Theme')}</label>
+              {/* ── Section: Dictionary ── */}
+              <div>
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <Languages className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('词典', 'Dictionary')}</span>
                 </div>
-                <div className="flex rounded-lg border border-border p-0.5 bg-muted/30 w-fit">
-                  <button
-                    type="button"
-                    onClick={() => { setTheme('light'); saveSettings(); }}
-                    className={`px-4 py-1.5 text-sm rounded-md transition-all ${theme === 'light' ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    {b('浅色', 'Light')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setTheme('dark'); saveSettings(); }}
-                    className={`px-4 py-1.5 text-sm rounded-md transition-all ${theme === 'dark' ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    {b('深色', 'Dark')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setTheme('system'); saveSettings(); }}
-                    className={`px-4 py-1.5 text-sm rounded-md transition-all ${theme === 'system' ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    {b('跟随系统', 'System')}
-                  </button>
-                </div>
-              </div>
-
-              {/* Dictionary */}
-              <div className="rounded-xl border border-border/60 overflow-hidden">
-                <div className="flex items-center gap-2.5 px-4 pt-4 pb-2">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                    <Languages className="w-3.5 h-3.5 text-emerald-500" />
-                  </div>
-                  <label className="text-sm font-medium">{b('词典功能', 'Dictionary')}</label>
-                </div>
-                <div className="divide-y divide-border/40">
-                  <div className="flex items-center justify-between px-4 py-3.5 hover:bg-muted/20 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-1.5 h-8 rounded-full transition-colors ${dictEnableEnToZh ? 'bg-emerald-500' : 'bg-muted-foreground/20'}`} />
-                      <div>
-                        <div className="text-sm font-medium">{b('英 → 中', 'EN → ZH')}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{b('双击英文单词弹出词典', 'Double-click English word for dictionary')}</div>
-                      </div>
+                <div className="rounded-xl border border-border/50 bg-card overflow-hidden divide-y divide-border/40">
+                  <div className="flex items-center justify-between px-4 py-3 hover:bg-muted/20 transition-colors">
+                    <div>
+                      <div className="text-sm">{b('英 → 中词典', 'EN → ZH Dictionary')}</div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">{b('ECDICT · 双击英文单词查询', 'ECDICT · Double-click English words')}</div>
                     </div>
                     <ToggleSwitch checked={dictEnableEnToZh} onChange={(v) => { setDictEnableEnToZh(v); saveSettings(); }} />
                   </div>
-                  <div className="flex items-center justify-between px-4 py-3.5 hover:bg-muted/20 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-1.5 h-8 rounded-full transition-colors ${dictEnableZhToEn ? 'bg-emerald-500' : 'bg-muted-foreground/20'}`} />
-                      <div>
-                        <div className="text-sm font-medium">{b('中 → 英', 'ZH → EN')}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{b('双击中文词语弹出词典', 'Double-click Chinese word for dictionary')}</div>
-                      </div>
+                  <div className="flex items-center justify-between px-4 py-3 hover:bg-muted/20 transition-colors">
+                    <div>
+                      <div className="text-sm">{b('中 → 英词典', 'ZH → EN Dictionary')}</div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">{b('CC-CEDICT · 双击中文词语查询', 'CC-CEDICT · Double-click Chinese words')}</div>
                     </div>
                     <ToggleSwitch checked={dictEnableZhToEn} onChange={(v) => { setDictEnableZhToEn(v); saveSettings(); }} />
                   </div>
                 </div>
               </div>
 
-              {/* Library Folder */}
-              <div className="rounded-xl border border-border/60 p-4 space-y-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
-                    <FolderOpen className="w-3.5 h-3.5 text-amber-500" />
+              {/* ── Section: Storage Paths ── */}
+              <div>
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <FolderOpen className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('存储路径', 'Storage Paths')}</span>
+                </div>
+                <div className="rounded-xl border border-border/50 bg-card overflow-hidden divide-y divide-border/40">
+                  {/* Library folder */}
+                  <div className="px-4 py-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <BookOpen className="w-3.5 h-3.5 text-muted-foreground/70" />
+                        <span className="text-sm">{b('文档库', 'Library')}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Button size="sm" variant="ghost" className="rounded-lg text-xs h-6 px-2 text-muted-foreground hover:text-foreground" onClick={handleChooseDocumentsDir}>
+                          {b('修改', 'Change')}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="rounded-lg text-xs h-6 px-2 text-muted-foreground hover:text-foreground" onClick={handleOpenDocumentsDir}>
+                          <ExternalLink className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="rounded-md bg-muted/30 px-2.5 py-1.5">
+                      <span className="font-mono text-[11px] text-muted-foreground break-all leading-relaxed">{documentsDir || defaultDocumentsDir || b('默认位置', 'Default')}</span>
+                    </div>
+                    {defaultDocumentsDir && documentsDir && documentsDir !== defaultDocumentsDir && (
+                      <p className="text-[10px] text-muted-foreground/50">{b('默认', 'Default')}: <span className="font-mono">{defaultDocumentsDir}</span></p>
+                    )}
                   </div>
-                  <label className="text-sm font-medium">{b('文档库位置', 'Library Folder')}</label>
-                </div>
-                <div className="rounded-lg bg-muted/30 px-3 py-2">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span className="font-mono break-all">{documentsDir || defaultDocumentsDir || b('默认位置', 'Default')}</span>
+                  {/* Model storage */}
+                  <div className="px-4 py-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-3.5 h-3.5 text-muted-foreground/70" />
+                        <span className="text-sm">{b('AI 模型', 'AI Models')}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Button size="sm" variant="ghost" className="rounded-lg text-xs h-6 px-2 text-muted-foreground hover:text-foreground" onClick={handleChooseModelsDir}>
+                          {b('修改', 'Change')}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="rounded-lg text-xs h-6 px-2 text-muted-foreground hover:text-foreground" onClick={handleOpenModelsDir}>
+                          <ExternalLink className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="rounded-md bg-muted/30 px-2.5 py-1.5">
+                      <span className="font-mono text-[11px] text-muted-foreground break-all leading-relaxed">{modelsDir || b('默认位置', 'Default')}</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground/50">{b('GGUF 模型文件位置，修改后服务自动停止', 'GGUF model location. Service stops on change.')}</p>
                   </div>
-                </div>
-                <p className="text-xs text-muted-foreground">{b('导入副本将保存到这个文件夹', 'Imported copies will be saved here')}</p>
-                {defaultDocumentsDir && documentsDir && documentsDir !== defaultDocumentsDir && (
-                  <p className="text-[10px] text-muted-foreground/60">{b('默认路径', 'Default')}: <span className="font-mono">{defaultDocumentsDir}</span></p>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleChooseDocumentsDir}>
-                    {b('选择文件夹', 'Choose Folder')}
-                  </Button>
-                  <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleOpenDocumentsDir}>
-                    {b('打开文件夹', 'Open Folder')}
-                  </Button>
-                </div>
-              </div>
-
-              {/* Model Storage Directory */}
-              <div className="rounded-xl border border-border/60 p-4 space-y-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center">
-                    <Sparkles className="w-3.5 h-3.5 text-purple-500" />
-                  </div>
-                  <label className="text-sm font-medium">{b('模型存储目录', 'Model Storage')}</label>
-                </div>
-                <div className="rounded-lg bg-muted/30 px-3 py-2">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span className="font-mono break-all">{modelsDir || b('默认位置', 'Default')}</span>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">{b('AI 模型文件（GGUF）存放位置，修改后服务将自动停止', 'AI model files (GGUF) location. Service stops on change.')}</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleChooseModelsDir}>
-                    {b('选择文件夹', 'Choose Folder')}
-                  </Button>
-                  <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleOpenModelsDir}>
-                    {b('打开文件夹', 'Open Folder')}
-                  </Button>
                 </div>
               </div>
             </>
@@ -1171,8 +1143,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
           {/* ===== AI Tab ===== */}
           {settingsTab === 'ai' && (
             <>
-              {/* Global download progress banner — always visible at top */}
-              {(builtinGlobalLoading || runtimeInstalling) && (
+              {/* Download progress banner — only visible when actual download is in progress */}
+              {downloadProgress && (builtinGlobalLoading || runtimeInstalling) && (
                 <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-medium text-primary flex items-center gap-1.5">
@@ -1198,15 +1170,16 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 </div>
               )}
 
-              <p className="text-xs text-muted-foreground">
-                {b('在 AI 助手面板的模型列表中切换使用的模型和服务。下方可分别配置各服务。',
-                   'Switch models via the AI panel dropdown. Configure each provider below.')}
+              <p className="text-[11px] text-muted-foreground px-1">
+                {b('在 AI 面板的模型列表中切换服务提供者和模型。',
+                   'Switch providers and models via the AI panel dropdown.')}
               </p>
 
-              {/* Built-in Local — Simple / Advanced mode */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold">{b('内置本地 AI', 'Built-in Local AI')}</span>
+              {/* ── Section: Built-in Local AI ── */}
+              <div>
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <Zap className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('内置本地 AI', 'Built-in Local AI')}</span>
                   {llmProvider === 'builtin_local' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 font-medium">{b('使用中', 'Active')}</span>}
                 </div>
                   {/* Status card — always visible */}
@@ -1318,27 +1291,29 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                             </span>
                           )}
                         </Button>
-                        {builtinGlobalLoading && (
+                        {builtinGlobalLoading && !downloadProgress && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>{b('正在启动...', 'Starting...')}</span>
+                          </div>
+                        )}
+                        {builtinGlobalLoading && downloadProgress && (
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                              <span>{downloadProgress ? downloadProgress.label : b('准备中...', 'Preparing...')}</span>
+                              <span>{downloadProgress.label}</span>
                               <div className="flex items-center gap-2">
-                                {downloadProgress && (
-                                  <span>
-                                    {(downloadProgress.written / 1024 / 1024).toFixed(1)} MB
-                                    {downloadProgress.total ? ` / ${(downloadProgress.total / 1024 / 1024).toFixed(1)} MB` : ''}
-                                    {downloadProgress.speed ? ` · ${downloadProgress.speed >= 1048576 ? (downloadProgress.speed / 1048576).toFixed(1) + ' MB/s' : (downloadProgress.speed / 1024).toFixed(0) + ' KB/s'}` : ''}
-                                  </span>
-                                )}
+                                <span>
+                                  {(downloadProgress.written / 1024 / 1024).toFixed(1)} MB
+                                  {downloadProgress.total ? ` / ${(downloadProgress.total / 1024 / 1024).toFixed(1)} MB` : ''}
+                                  {downloadProgress.speed ? ` · ${downloadProgress.speed >= 1048576 ? (downloadProgress.speed / 1048576).toFixed(1) + ' MB/s' : (downloadProgress.speed / 1024).toFixed(0) + ' KB/s'}` : ''}
+                                </span>
                                 <button className="text-[10px] text-destructive hover:underline" onClick={async () => { try { await invoke('builtin_llm_cancel_download'); } catch {} }}>{b('取消', 'Cancel')}</button>
                               </div>
                             </div>
                             <div className="h-1.5 bg-muted/50 rounded-full overflow-hidden">
-                              {downloadProgress
-                                ? <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: downloadProgress.total ? `${Math.min(100, (downloadProgress.written / downloadProgress.total) * 100)}%` : '30%' }} />
-                                : <div className="h-full bg-primary/60 rounded-full animate-pulse" style={{ width: '30%' }} />}
+                              <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: downloadProgress.total ? `${Math.min(100, (downloadProgress.written / downloadProgress.total) * 100)}%` : '30%' }} />
                             </div>
-                            {downloadProgress?.total && (
+                            {downloadProgress.total && (
                               <div className="text-[10px] text-muted-foreground text-right">
                                 {Math.round((downloadProgress.written / downloadProgress.total) * 100)}%
                               </div>
@@ -1820,78 +1795,80 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   )}
                 </div>
 
-              {/* Ollama */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold">Ollama</span>
+              {/* ── Section: Ollama ── */}
+              <div>
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ollama</span>
                   {llmProvider === 'ollama' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 font-medium">{b('使用中', 'Active')}</span>}
                 </div>
-                  <div className="rounded-xl border border-border/60 p-4 space-y-3">
-                    <div>
-                      <label className="text-xs font-medium">{b('服务地址', 'Server URL')}</label>
-                      <div className="flex gap-2 mt-1">
-                        <input type="text" value={ollamaUrl} onChange={(e) => { setOllamaUrl(e.target.value); saveSettings(); }} className="flex-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="http://localhost:11434" />
-                        <Button variant="outline" size="sm" className="rounded-lg h-8 px-3" onClick={handleRefreshModels} disabled={loadingModels}>
-                          {loadingModels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                <div className="rounded-xl border border-border/50 bg-card overflow-hidden divide-y divide-border/40">
+                  {/* Server URL row */}
+                  <div className="px-4 py-3 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">{b('服务地址', 'Server URL')}</span>
+                      <div className="flex items-center gap-1.5">
+                        {connectionStatus === 'connected' && <span className="flex items-center gap-1 text-[11px] text-green-600"><CheckCircle className="w-3 h-3" />{b('已连接', 'Connected')}</span>}
+                        {connectionStatus === 'error' && <span className="flex items-center gap-1 text-[11px] text-red-600"><XCircle className="w-3 h-3" />{b('失败', 'Failed')}</span>}
+                        <Button variant="ghost" size="sm" className="rounded-lg h-6 w-6 p-0 text-muted-foreground hover:text-foreground" onClick={handleRefreshModels} disabled={loadingModels}>
+                          {loadingModels ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                         </Button>
                       </div>
-                      <div className="flex items-center gap-1 mt-1.5 text-xs">
-                        {connectionStatus === 'connected' && (<><CheckCircle className="w-3 h-3 text-green-500" /><span className="text-green-600">{b('已连接', 'Connected')}</span></>)}
-                        {connectionStatus === 'error' && (<><XCircle className="w-3 h-3 text-red-500" /><span className="text-red-600">{b('连接失败', 'Failed')}</span></>)}
-                      </div>
                     </div>
-                    <div>
-                      <label className="text-xs font-medium">{b('模型', 'Model')}</label>
-                      {models.length > 0 ? (
-                        <select value={ollamaModel} onChange={(e) => { setOllamaModel(e.target.value); saveSettings(); }} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm">
-                          {models.map((model) => (<option key={model.name} value={model.name}>{model.name} ({formatModelSize(model.size)})</option>))}
-                        </select>
-                      ) : (
-                        <input type="text" value={ollamaModel} onChange={(e) => { setOllamaModel(e.target.value); saveSettings(); }} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="qwen3:8b" />
-                      )}
-                      <p className="text-[11px] text-muted-foreground mt-1">
-                        {models.length > 0 ? b(`${models.length} 个模型`, `${models.length} model(s)`) : b('输入模型名或刷新', 'Type model name or refresh')}
-                      </p>
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      {b('未安装？访问 ', 'Not installed? Visit ')}
-                      <span className="font-mono text-primary">https://ollama.com</span>
-                      {b(' 下载 Ollama', ' to download Ollama')}
-                    </div>
+                    <input type="text" value={ollamaUrl} onChange={(e) => { setOllamaUrl(e.target.value); saveSettings(); }} className="w-full px-2.5 py-1.5 border border-border/60 rounded-md bg-background text-foreground text-xs font-mono" placeholder="http://localhost:11434" />
                   </div>
-                </div>
-
-              {/* OpenAI Compatible */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold">OpenAI Compatible</span>
-                  {llmProvider === 'openai_compatible' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 font-medium">{b('使用中', 'Active')}</span>}
-                </div>
-              <div className="rounded-xl border border-border/60 p-4 space-y-3">
-                  <div>
-                    <label className="text-xs font-medium">Base URL</label>
-                    <input type="text" value={openAICompatibleBaseUrl} onChange={(e) => { setOpenAICompatibleBaseUrl(e.target.value); saveSettings(); }} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="https://api.openai.com/v1" />
-                    <p className="text-[11px] text-muted-foreground mt-1">{b('需要包含', 'Must include')} <code className="bg-muted px-1 rounded text-[10px]">/v1</code></p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium">API Key</label>
-                    <input type="password" value={openAICompatibleApiKey} onChange={(e) => { setOpenAICompatibleApiKey(e.target.value); saveSettings(); }} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="sk-..." />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium">Model</label>
-                    <input type="text" value={openAICompatibleModel} onChange={(e) => { setOpenAICompatibleModel(e.target.value); saveSettings(); }} className="w-full mt-1 px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-sm" placeholder="gpt-4o-mini" />
+                  {/* Model row */}
+                  <div className="px-4 py-3 space-y-1.5">
+                    <span className="text-sm">{b('模型', 'Model')}</span>
+                    {models.length > 0 ? (
+                      <select value={ollamaModel} onChange={(e) => { setOllamaModel(e.target.value); saveSettings(); }} className="w-full px-2.5 py-1.5 border border-border/60 rounded-md bg-background text-foreground text-xs">
+                        {models.map((model) => (<option key={model.name} value={model.name}>{model.name} ({formatModelSize(model.size)})</option>))}
+                      </select>
+                    ) : (
+                      <input type="text" value={ollamaModel} onChange={(e) => { setOllamaModel(e.target.value); saveSettings(); }} className="w-full px-2.5 py-1.5 border border-border/60 rounded-md bg-background text-foreground text-xs" placeholder="qwen3:8b" />
+                    )}
+                    <p className="text-[10px] text-muted-foreground/60">
+                      {models.length > 0 ? b(`${models.length} 个模型可用`, `${models.length} model(s) available`) : b('输入模型名或点击刷新按钮', 'Type model name or click refresh')}
+                      {' · '}<span className="font-mono text-primary/80">ollama.com</span>
+                    </p>
                   </div>
                 </div>
               </div>
 
-              {/* Custom Prompts (in AI tab) */}
-              <div className="rounded-xl border border-border/60 overflow-hidden">
+              {/* ── Section: OpenAI Compatible ── */}
+              <div>
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">OpenAI Compatible</span>
+                  {llmProvider === 'openai_compatible' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 font-medium">{b('使用中', 'Active')}</span>}
+                </div>
+                <div className="rounded-xl border border-border/50 bg-card overflow-hidden divide-y divide-border/40">
+                  <div className="px-4 py-3 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Base URL</span>
+                      <span className="text-[10px] text-muted-foreground/60">{b('需包含', 'Must include')} /v1</span>
+                    </div>
+                    <input type="text" value={openAICompatibleBaseUrl} onChange={(e) => { setOpenAICompatibleBaseUrl(e.target.value); saveSettings(); }} className="w-full px-2.5 py-1.5 border border-border/60 rounded-md bg-background text-foreground text-xs font-mono" placeholder="https://api.openai.com/v1" />
+                  </div>
+                  <div className="px-4 py-3 space-y-1.5">
+                    <span className="text-sm">API Key</span>
+                    <input type="password" value={openAICompatibleApiKey} onChange={(e) => { setOpenAICompatibleApiKey(e.target.value); saveSettings(); }} className="w-full px-2.5 py-1.5 border border-border/60 rounded-md bg-background text-foreground text-xs font-mono" placeholder="sk-..." />
+                  </div>
+                  <div className="px-4 py-3 space-y-1.5">
+                    <span className="text-sm">Model</span>
+                    <input type="text" value={openAICompatibleModel} onChange={(e) => { setOpenAICompatibleModel(e.target.value); saveSettings(); }} className="w-full px-2.5 py-1.5 border border-border/60 rounded-md bg-background text-foreground text-xs font-mono" placeholder="gpt-4o-mini" />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Section: Custom Prompts (collapsible) ── */}
+              <div className="rounded-xl border border-border/50 bg-card overflow-hidden">
                 <button
                   onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="w-full flex items-center justify-between gap-2 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+                  className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-muted/20 transition-colors"
                 >
                   <span>{b('自定义 Prompts', 'Custom Prompts')}</span>
-                  {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
                 {showAdvanced && (
                   <div className="px-4 pb-4 space-y-3 border-t border-border/40">
@@ -1923,14 +1900,14 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 )}
               </div>
 
-              {/* Download URLs config */}
-              <div className="rounded-xl border border-border/60 overflow-hidden">
+              {/* ── Section: Download URLs (collapsible) ── */}
+              <div className="rounded-xl border border-border/50 bg-card overflow-hidden">
                 <button
                   onClick={() => setShowDownloadUrls(!showDownloadUrls)}
-                  className="w-full flex items-center justify-between gap-2 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors"
+                  className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-muted/20 transition-colors"
                 >
                   <span>{b('下载链接配置', 'Download URLs')}</span>
-                  {showDownloadUrls ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  {showDownloadUrls ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
                 {showDownloadUrls && (
                   <div className="px-4 pb-4 space-y-3 border-t border-border/40">
@@ -2019,22 +1996,27 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
           {/* ===== Storage Tab ===== */}
           {settingsTab === 'storage' && (
             <>
-              {/* Cache */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">{b('文档缓存', 'Document Cache')}</label>
-                <div className="rounded-xl border border-border/60 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
+              {/* ── Section: Document Cache ── */}
+              <div>
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <HardDrive className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('文档缓存', 'Document Cache')}</span>
+                </div>
+                <div className="rounded-xl border border-border/50 bg-card overflow-hidden divide-y divide-border/40">
+                  {/* Usage row */}
+                  <div className="flex items-center justify-between px-4 py-3">
                     <div>
                       <div className="text-sm">{b(`${cacheStats.count} 个文档`, `${cacheStats.count} document(s)`)}</div>
-                      <div className="text-xs text-muted-foreground">{formatSize(cacheStats.size)} / {formatSize(cacheStats.maxSize)}</div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">{formatSize(cacheStats.size)} / {formatSize(cacheStats.maxSize)}</div>
                     </div>
                     <Button variant="outline" size="sm" className="rounded-lg text-xs h-7" onClick={handleClearCache} disabled={cacheStats.count === 0}>
                       <Trash2 className="w-3 h-3 mr-1" />{b('清空', 'Clear')}
                     </Button>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-muted-foreground">{b('上限', 'Max')}:</label>
-                    <div className="flex rounded-lg border border-border p-0.5 bg-muted/30">
+                  {/* Max size row */}
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm">{b('缓存上限', 'Max Size')}</span>
+                    <div className="flex rounded-lg border border-border/60 p-0.5 bg-muted/30">
                       {[
                         { value: 50, label: '50MB' },
                         { value: 100, label: '100MB' },
@@ -2046,8 +2028,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                           key={opt.value}
                           type="button"
                           onClick={() => { setMaxCacheSize(opt.value); setCacheStats(getCacheStats()); }}
-                          className={`px-2 py-0.5 text-[11px] rounded-md transition-all ${
-                            Math.round(cacheStats.maxSize / 1024 / 1024) === opt.value ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'
+                          className={`px-2 py-1 text-[11px] rounded-md transition-all ${
+                            Math.round(cacheStats.maxSize / 1024 / 1024) === opt.value ? 'bg-background shadow-sm font-medium text-primary' : 'text-muted-foreground hover:text-foreground'
                           }`}
                         >
                           {opt.label}
@@ -2055,28 +2037,33 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       ))}
                     </div>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">{b('LRU 策略自动管理', 'Managed automatically via LRU')}</p>
                 </div>
+                <p className="text-[10px] text-muted-foreground/50 mt-1.5 px-1">{b('LRU 策略自动淘汰旧缓存', 'Old cache auto-evicted via LRU policy')}</p>
               </div>
 
-              {/* Reset App */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-destructive">{b('危险区域', 'Danger Zone')}</label>
-                <div className="rounded-xl border border-destructive/25 p-4 space-y-3">
-                  <div>
-                    <div className="text-sm font-medium">{b('重置应用', 'Reset App')}</div>
-                    <div className="text-xs text-muted-foreground mt-1">{b('清空所有数据回到初始状态：文档、词典、模型、笔记、设置', 'Clear all data: documents, dictionaries, models, notes, settings')}</div>
-                  </div>
-                  {appDataDir && (
-                    <div className="text-[11px] text-muted-foreground break-all">
-                      <span className="font-mono">{appDataDir}</span>
+              {/* ── Section: Danger Zone ── */}
+              <div>
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <Trash2 className="w-3.5 h-3.5 text-destructive/60" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-destructive/60">{b('危险区域', 'Danger Zone')}</span>
+                </div>
+                <div className="rounded-xl border border-destructive/20 bg-card overflow-hidden">
+                  <div className="px-4 py-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm">{b('重置应用', 'Reset App')}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">{b('清空所有数据：文档、词典、模型、笔记、设置', 'Clear all data: documents, dictionaries, models, notes, settings')}</div>
+                      </div>
+                      <Button variant="destructive" size="sm" className="rounded-lg text-xs h-7 flex-shrink-0" onClick={handleResetAllData} disabled={builtinGlobalLoading}>
+                        {builtinGlobalLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                        {builtinGlobalLoading ? b('重置中...', 'Resetting...') : b('清空所有数据', 'Clear All Data')}
+                      </Button>
                     </div>
-                  )}
-                  <div className="flex justify-end">
-                    <Button variant="destructive" size="sm" className="rounded-lg text-xs h-7" onClick={handleResetAllData} disabled={builtinGlobalLoading}>
-                      {builtinGlobalLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                      {builtinGlobalLoading ? b('重置中...', 'Resetting...') : b('清空所有数据', 'Clear All Data')}
-                    </Button>
+                    {appDataDir && (
+                      <div className="rounded-md bg-muted/30 px-2.5 py-1.5 mt-2">
+                        <span className="font-mono text-[10px] text-muted-foreground/60 break-all">{appDataDir}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2086,42 +2073,41 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
           {/* ===== About Tab ===== */}
           {settingsTab === 'about' && (
             <>
-              {/* App Info */}
-              <div className="rounded-xl border border-border/60 p-5 text-center space-y-3">
-                <div className="flex items-center justify-center gap-3">
-                  <BookOpen className="w-8 h-8 text-primary" strokeWidth={1.5} />
-                  <h1 className="text-2xl font-black uppercase tracking-wider">
+              {/* App Identity */}
+              <div className="flex flex-col items-center pt-2 pb-1 space-y-2">
+                <div className="flex items-center gap-2.5">
+                  <BookOpen className="w-7 h-7 text-primary" strokeWidth={1.5} />
+                  <h1 className="text-xl font-black uppercase tracking-wider">
                     <span className="text-primary">Ai</span><span className="text-foreground/85">Reader</span>
                   </h1>
                 </div>
                 {appVersion && (
-                  <div className="text-xs text-muted-foreground">
-                    {b('版本', 'Version')} {appVersion}
-                  </div>
+                  <span className="text-[11px] text-muted-foreground/70 tabular-nums">v{appVersion}</span>
                 )}
-                <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
+                <p className="text-[11px] text-muted-foreground text-center max-w-xs leading-relaxed">
                   {b(
-                    '一个带有 AI 辅助翻译和解释功能的本地电子书阅读器。支持 PDF、EPUB、TXT、Markdown 格式。',
-                    'A local ebook reader with AI-powered translation and explanation. Supports PDF, EPUB, TXT, and Markdown.'
+                    '完全离线的 AI 阅读助手 — 翻译、解释、对话、笔记，一切在本地完成。',
+                    'Fully offline AI reading assistant — translate, explain, chat, take notes, all on your machine.'
                   )}
                 </p>
               </div>
 
-              {/* Links */}
-              <div className="rounded-xl border border-border/60 overflow-hidden">
-                <div className="px-4 py-2.5 bg-muted/30 border-b border-border/40">
-                  <span className="text-xs font-medium">{b('链接', 'Links')}</span>
+              {/* ── Section: Links ── */}
+              <div>
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('链接', 'Links')}</span>
                 </div>
-                <div className="divide-y divide-border/40">
+                <div className="rounded-xl border border-border/50 bg-card overflow-hidden divide-y divide-border/40">
                   {[
-                    { url: 'https://github.com/LissajousX/aireader', icon: <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />, title: 'GitHub', desc: 'github.com/LissajousX/aireader' },
-                    { url: 'https://github.com/LissajousX/aireader/releases', icon: <Download className="w-3.5 h-3.5 text-muted-foreground" />, title: b('更新日志 & 下载', 'Changelog & Downloads'), desc: b('查看最新版本和更新内容', 'View latest releases and changelogs') },
-                    { url: 'https://github.com/LissajousX/aireader/issues', icon: <Languages className="w-3.5 h-3.5 text-muted-foreground" />, title: b('反馈 & Bug 报告', 'Feedback & Bug Reports'), desc: b('提交问题或功能建议', 'Submit issues or feature requests') },
+                    { url: 'https://github.com/LissajousX/aireader', title: 'GitHub', desc: 'github.com/LissajousX/aireader' },
+                    { url: 'https://github.com/LissajousX/aireader/releases', title: b('版本发布', 'Releases'), desc: b('下载最新版本', 'Download latest version') },
+                    { url: 'https://github.com/LissajousX/aireader/issues', title: b('反馈', 'Feedback'), desc: b('提交问题或功能建议', 'Submit issues or feature requests') },
                   ].map((link) => (
                     <button
                       key={link.url}
                       type="button"
-                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer text-left"
+                      className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors cursor-pointer text-left"
                       onClick={async () => {
                         const { confirm } = await import("@tauri-apps/plugin-dialog");
                         const ok = await confirm(
@@ -2133,36 +2119,46 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                         }
                       }}
                     >
-                      <div className="w-7 h-7 rounded-lg bg-muted/50 flex items-center justify-center">{link.icon}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium">{link.title}</div>
-                        <div className="text-[11px] text-muted-foreground">{link.desc}</div>
+                      <div>
+                        <div className="text-sm">{link.title}</div>
+                        <div className="text-[10px] text-muted-foreground">{link.desc}</div>
                       </div>
+                      <ExternalLink className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Credits */}
-              <div className="rounded-xl border border-border/60 p-4 space-y-2">
-                <div className="flex items-center gap-2 mb-2">
-                  <Heart className="w-3.5 h-3.5 text-pink-500" />
-                  <span className="text-xs font-medium">{b('致谢', 'Credits')}</span>
+              {/* ── Section: Credits ── */}
+              <div>
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <Heart className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{b('致谢', 'Credits')}</span>
                 </div>
-                <div className="text-[11px] text-muted-foreground space-y-1 leading-relaxed">
-                  <p>• <strong>Tauri</strong> — {b('跨平台桌面应用框架', 'Cross-platform desktop app framework')}</p>
-                  <p>• <strong>llama.cpp</strong> — {b('本地 LLM 推理引擎', 'Local LLM inference engine')}</p>
-                  <p>• <strong>Qwen3</strong> — {b('内置 AI 模型系列', 'Built-in AI model family')}</p>
-                  <p>• <strong>epub.js</strong> — {b('EPUB 渲染引擎', 'EPUB rendering engine')}</p>
-                  <p>• <strong>pdf.js</strong> — {b('PDF 渲染引擎', 'PDF rendering engine')}</p>
-                  <p>• <strong>CC-CEDICT</strong> — {b('中英词典数据', 'Chinese-English dictionary data')}</p>
-                  <p>• <strong>ECDICT</strong> — {b('英中词典数据', 'English-Chinese dictionary data')}</p>
+                <div className="rounded-xl border border-border/50 bg-card overflow-hidden">
+                  <div className="px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
+                    {[
+                      ['Tauri', b('桌面应用框架', 'Desktop framework')],
+                      ['llama.cpp', b('LLM 推理引擎', 'LLM inference')],
+                      ['Qwen3', b('AI 模型', 'AI models')],
+                      ['epub.js', b('EPUB 渲染', 'EPUB rendering')],
+                      ['pdf.js', b('PDF 渲染', 'PDF rendering')],
+                      ['ECDICT', b('英中词典', 'EN→ZH dictionary')],
+                      ['CC-CEDICT', b('中英词典', 'ZH→EN dictionary')],
+                    ].map(([name, desc]) => (
+                      <div key={name} className="flex items-baseline gap-1.5">
+                        <span className="font-medium text-foreground/70">{name}</span>
+                        <span className="text-muted-foreground/50">—</span>
+                        <span>{desc}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
               {/* Copyright */}
-              <div className="text-center text-[10px] text-muted-foreground/60 pt-1">
-                © {new Date().getFullYear()} Aireader. MIT License.
+              <div className="text-center text-[10px] text-muted-foreground/40 pt-1">
+                © {new Date().getFullYear()} Aireader · MIT License
               </div>
             </>
           )}

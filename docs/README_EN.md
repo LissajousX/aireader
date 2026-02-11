@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="screenshots/icon.png" width="80" alt="Aireader" />
+<img src="../screenshots/icon.png" width="80" alt="Aireader" />
 
 # Aireader
 
@@ -8,12 +8,12 @@
 
 **Fully offline AI reading assistant — translate, explain, chat, take notes, all on your machine**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../LICENSE)
 [![Tauri 2.0](https://img.shields.io/badge/Tauri-2.0-orange)](https://tauri.app)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-b7966-green)](https://github.com/ggml-org/llama.cpp)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20·%20macOS%20·%20Ubuntu-lightgrey)]()
 
-**[中文](README.md)** · **[User Guide](USER_GUIDE_EN.md)** · **[用户指南](USER_GUIDE_CN.md)**
+**[中文](../README.md)** · **[User Guide](USER_GUIDE_EN.md)** · **[用户指南](USER_GUIDE_CN.md)**
 
 </div>
 
@@ -27,17 +27,17 @@
 
 | Main Interface | Select to Translate |
 |:---:|:---:|
-| ![Main Interface](screenshots/main-interface-en.png) | ![Select to Translate](screenshots/select-translate-en.png) |
+| ![Main Interface](../screenshots/main-interface-en.png) | ![Select to Translate](../screenshots/select-translate-en.png) |
 
 <details>
 <summary><b>More Screenshots</b></summary>
 
 | Feature | English | 中文 |
 |:---|:---:|:---:|
-| AI Chat | ![](screenshots/ai-chat-en.png) | ![](screenshots/ai-chat.png) |
-| Dark Theme | ![](screenshots/dark-theme-en.png) | ![](screenshots/dark-theme.png) |
-| Dictionary Popup | ![](screenshots/dictionary-popup-en.png) | ![](screenshots/dictionary-popup.png) |
-| Quick Setup | ![](screenshots/quick-setup-en.png) | ![](screenshots/quick-setup.png) |
+| AI Chat | ![](../screenshots/ai-chat-en.png) | ![](../screenshots/ai-chat.png) |
+| Dark Theme | ![](../screenshots/dark-theme-en.png) | ![](../screenshots/dark-theme.png) |
+| Dictionary Popup | ![](../screenshots/dictionary-popup-en.png) | ![](../screenshots/dictionary-popup.png) |
+| Quick Setup | ![](../screenshots/quick-setup-en.png) | ![](../screenshots/quick-setup.png) |
 
 </details>
 
@@ -107,6 +107,12 @@ aireader/
 │   │   └── ollama.rs           # Ollama proxy
 │   ├── resources/              # Dictionaries & sample documents
 │   └── Cargo.toml
+├── docs/                       # Documentation
+│   ├── README_EN.md            # English README
+│   ├── USER_GUIDE.md           # User Guide (bilingual)
+│   ├── USER_GUIDE_CN.md        # 用户指南 (中文)
+│   └── USER_GUIDE_EN.md        # User Guide (English)
+├── screenshots/                # Screenshots
 └── package.json
 ```
 
@@ -122,4 +128,4 @@ aireader/
 
 ## 📄 License
 
-[MIT](LICENSE) © xujiayu
+[MIT](../LICENSE) © xujiayu

@@ -31,7 +31,7 @@ Thumbs.db
 
 # Development reference / learning materials
 /forlearning/
-/plan/
+/docs/plan/
 
 /src-tauri/resources/llm/runtime/*cuda*
 /src-tauri/resources/llm/runtime/*vulkan*
