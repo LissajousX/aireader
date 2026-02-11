@@ -140,6 +140,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     setAiStep(null);
     setDownloadProgress(null);
     setBenchPhase('idle');
+    try { await invoke('builtin_llm_cancel_download'); } catch {}
     try { await invoke('builtin_llm_stop'); } catch {}
   };
 

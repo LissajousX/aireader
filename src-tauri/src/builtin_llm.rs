@@ -455,7 +455,7 @@ async fn probe_fastest_mirror(client: &reqwest::Client, urls: &[&str]) -> Vec<us
                 Duration::from_secs(8),
                 client.head(&url_owned).send()
             ).await {
-                Ok(Ok(_resp)) => Some(start.elapsed()),
+                Ok(Ok(resp)) if resp.status().is_success() || resp.status() == reqwest::StatusCode::METHOD_NOT_ALLOWED => Some(start.elapsed()),
                 _ => None,
             }
         })));
@@ -468,7 +468,7 @@ async fn probe_fastest_mirror(client: &reqwest::Client, urls: &[&str]) -> Vec<us
         }
     }
     results.sort_by_key(|(_, d)| *d);
-    println!("[builtin_llm] Mirror probe results: {:?}", results.iter().map(|(i, d)| (urls[*i].chars().take(50).collect::<String>(), d.as_millis())).collect::<Vec<_>>());
+    log::debug!("[builtin_llm] Mirror probe results: {:?}", results.iter().map(|(i, d)| (urls[*i].chars().take(50).collect::<String>(), d.as_millis())).collect::<Vec<_>>());
     results.iter().map(|(i, _)| *i).collect()
 }
 
@@ -894,11 +894,11 @@ pub fn auto_install_cpu_runtime(app: &AppHandle, llm_dir: &Path) {
             if z.exists() {
                 match safe_archive_extract(&z, &rt) {
                     Ok(_) => {
-                        println!("[builtin_llm] Runtime auto-extracted from {}", z.display());
+                        log::info!("[builtin_llm] Runtime auto-extracted from {}", z.display());
                         return;
                     }
                     Err(e) => {
-                        eprintln!("[builtin_llm] Failed to extract runtime: {}", e);
+                        log::warn!("[builtin_llm] Failed to extract runtime: {}", e);
                     }
                 }
             }

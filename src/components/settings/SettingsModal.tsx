@@ -413,7 +413,14 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     if (!builtinRecommend) return;
     const anyRunning = Object.values(builtinStatusById).some(s => s?.running);
     if (anyRunning) {
+      const { confirm } = await import("@tauri-apps/plugin-dialog");
+      const ok = await confirm(
+        b('应用推荐配置会停止当前运行的 AI 服务。继续？', 'Applying recommended config will stop the running AI service. Continue?'),
+        { title: b('应用推荐', 'Apply Recommendation'), kind: 'warning', okLabel: b('继续', 'Continue'), cancelLabel: b('取消', 'Cancel') }
+      );
+      if (!ok) return;
       try { await invoke<any>("builtin_llm_stop", {}); } catch { /* ignore */ }
+      setStartedConfig(null);
     }
     // Prefer benchmark-based model if available, otherwise use hardware-only recommendation
     const modelId = benchmarkResult ? benchmarkResult.recommendedModelId : builtinRecommend.recommendedModelId;
@@ -524,8 +531,10 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       const msg = getErrorMessage(error);
       if (!/cancelled/i.test(msg)) setBuiltinError(msg);
       setQuickSetupStep(null);
+      try { await invoke('builtin_llm_cancel_download'); } catch { /* ignore */ }
     } finally {
       setBuiltinGlobalLoading(false);
+      setDownloadProgress(null);
     }
   };
 
@@ -691,6 +700,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   };
 
   const handleChooseModelsDir = async () => {
+    if (isAnyBusy) return;
     const { open, ask, message } = await import("@tauri-apps/plugin-dialog");
     const selected = await open({ directory: true, multiple: false } as any);
     const dir = typeof selected === "string" ? selected : null;
@@ -768,6 +778,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       }
     } finally {
       setBuiltinLoadingById((prev) => ({ ...prev, [modelId]: false }));
+      setDownloadProgress(null);
     }
   };
 
@@ -794,6 +805,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   };
 
   const [runtimeInstalling, setRuntimeInstalling] = useState(false);
+  const isAnyBusy = builtinGlobalLoading || runtimeInstalling || Object.values(builtinLoadingById).some(v => v);
+
   const handleBuiltinInstallRuntime = async () => {
     try {
       setRuntimeError(null);
@@ -808,25 +821,34 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       if (!/cancelled/i.test(msg)) setRuntimeError(msg);
     } finally {
       setRuntimeInstalling(false);
+      setDownloadProgress(null);
     }
   };
 
   const handleBuiltinDeleteRuntime = async () => {
     const { confirm } = await import("@tauri-apps/plugin-dialog");
-    const confirmed = await confirm(
-      b(`确定要删除当前运行时 (${builtinComputeMode}/${builtinGpuBackend}) 吗？`, `Delete runtime (${builtinComputeMode}/${builtinGpuBackend})?`),
+    const anyRunning = Object.values(builtinStatusById).some(s => s?.running);
+    const msg = anyRunning
+      ? b(`AI 服务正在运行中，删除运行时会先停止服务。\n确定要删除当前运行时 (${builtinComputeMode}/${builtinGpuBackend}) 吗？`,
+          `AI service is running. Deleting runtime will stop it first.\nDelete runtime (${builtinComputeMode}/${builtinGpuBackend})?`)
+      : b(`确定要删除当前运行时 (${builtinComputeMode}/${builtinGpuBackend}) 吗？`, `Delete runtime (${builtinComputeMode}/${builtinGpuBackend})?`);
+    const confirmed = await confirm(msg,
       { title: b('删除运行时', 'Delete Runtime'), kind: 'warning', okLabel: b('删除', 'Delete'), cancelLabel: b('取消', 'Cancel') }
     );
     if (!confirmed) return;
     try {
       setRuntimeError(null);
       setRuntimeInstalling(true);
+      if (anyRunning) {
+        try { await invoke<any>("builtin_llm_stop"); } catch { /* ignore */ }
+        setStartedConfig(null);
+      }
       await invoke<void>("builtin_llm_delete_runtime", { options: { computeMode: builtinComputeMode, gpuBackend: builtinGpuBackend, cudaVersion: builtinCudaVersion } });
       await refreshBuiltinStatus();
     } catch (error) {
       console.error("builtin_llm_delete_runtime failed:", error);
-      const msg = getErrorMessage(error);
-      setRuntimeError(msg);
+      const msg2 = getErrorMessage(error);
+      setRuntimeError(msg2);
     } finally {
       setRuntimeInstalling(false);
     }
@@ -865,6 +887,14 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   };
 
   const handleBuiltinRun = async () => {
+    // Hard check: refuse to start if model or runtime not installed
+    if (!builtinStatus?.modelInstalled || !runtimeStatus?.installed) {
+      setBuiltinError(b(
+        '请先下载推理引擎和模型，再启动服务。',
+        'Please download runtime and model first before starting the service.'
+      ));
+      return;
+    }
     // C6: Config mismatch warning
     const model = BUILTIN_MODELS.find(m => m.id === builtinModelId);
     if (model && model.tier >= 2 && builtinComputeMode === 'cpu') {
@@ -882,8 +912,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       setBuiltinError(null);
       setBuiltinGlobalLoading(true);
       setDownloadProgress(null);
-      const { rtKey: erKey, cudartKey: ecKey } = getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion);
-      await invoke<any>("builtin_llm_ensure_running", { options: { modelId: builtinModelId, mode: "auto", computeMode: builtinComputeMode, gpuBackend: builtinGpuBackend, gpuLayers: builtinGpuLayers, cudaVersion: builtinCudaVersion, runtimeUrl: builtinDownloadUrls[erKey] || undefined, cudartUrl: builtinDownloadUrls[ecKey ?? ''] || undefined }, onProgress: createProgressChannel() });
+      await invoke<any>("builtin_llm_ensure_running", { options: { modelId: builtinModelId, mode: "bundled_only", computeMode: builtinComputeMode, gpuBackend: builtinGpuBackend, gpuLayers: builtinGpuLayers, cudaVersion: builtinCudaVersion }, onProgress: createProgressChannel() });
       setStartedConfig({ modelId: builtinModelId, cm: builtinComputeMode, gb: builtinGpuBackend, cv: builtinCudaVersion, gl: builtinGpuLayers });
       // Enable auto-start on next launch
       useSettingsStore.getState().setBuiltinAutoEnabled(true);
@@ -1122,7 +1151,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                         <span className="text-sm">{b('AI 模型', 'AI Models')}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <Button size="sm" variant="ghost" className="rounded-lg text-xs h-6 px-2 text-muted-foreground hover:text-foreground" onClick={handleChooseModelsDir}>
+                        <Button size="sm" variant="ghost" className="rounded-lg text-xs h-6 px-2 text-muted-foreground hover:text-foreground" onClick={handleChooseModelsDir} disabled={isAnyBusy}>
                           {b('修改', 'Change')}
                         </Button>
                         <Button size="sm" variant="ghost" className="rounded-lg text-xs h-6 px-2 text-muted-foreground hover:text-foreground" onClick={handleOpenModelsDir}>
@@ -1143,33 +1172,6 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
           {/* ===== AI Tab ===== */}
           {settingsTab === 'ai' && (
             <>
-              {/* Download progress banner — only visible when actual download is in progress */}
-              {downloadProgress && (builtinGlobalLoading || runtimeInstalling) && (
-                <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-medium text-primary flex items-center gap-1.5">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      {downloadProgress ? downloadProgress.label : b('正在处理...', 'Processing...')}
-                    </span>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      {downloadProgress && (
-                        <span className="text-[11px] tabular-nums">
-                          {(downloadProgress.written / 1024 / 1024).toFixed(1)} MB
-                          {downloadProgress.total ? ` / ${(downloadProgress.total / 1024 / 1024).toFixed(1)} MB` : ''}
-                          {downloadProgress.speed ? ` · ${downloadProgress.speed >= 1048576 ? (downloadProgress.speed / 1048576).toFixed(1) + ' MB/s' : (downloadProgress.speed / 1024).toFixed(0) + ' KB/s'}` : ''}
-                        </span>
-                      )}
-                      <button className="text-[10px] text-destructive hover:underline" onClick={async () => { try { await invoke('builtin_llm_cancel_download'); } catch {} }}>{b('取消', 'Cancel')}</button>
-                    </div>
-                  </div>
-                  <div className="h-2 bg-muted/50 rounded-full overflow-hidden">
-                    {downloadProgress?.total
-                      ? <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${Math.min(100, (downloadProgress.written / downloadProgress.total) * 100)}%` }} />
-                      : <div className="h-full bg-primary/60 rounded-full animate-pulse" style={{ width: '30%' }} />}
-                  </div>
-                </div>
-              )}
-
               <p className="text-[11px] text-muted-foreground px-1">
                 {b('在 AI 面板的模型列表中切换服务提供者和模型。',
                    'Switch providers and models via the AI panel dropdown.')}
@@ -1209,22 +1211,22 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                           );
                           if (statusConfigChanged) return (
                             <>
-                              <Button size="sm" className="rounded-lg text-xs h-7 bg-amber-600 hover:bg-amber-700" onClick={handleBuiltinRun} disabled={builtinGlobalLoading}>
+                              <Button size="sm" className="rounded-lg text-xs h-7 bg-amber-600 hover:bg-amber-700" onClick={handleBuiltinRun} disabled={isAnyBusy}>
                                 {builtinGlobalLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <RefreshCw className="w-3 h-3 mr-1" />}
                                 {b('应用并重启', 'Apply & Restart')}
                               </Button>
-                              <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleBuiltinStop} disabled={builtinGlobalLoading}>
+                              <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleBuiltinStop} disabled={isAnyBusy}>
                                 {b('停止', 'Stop')}
                               </Button>
                             </>
                           );
                           if (isRunning && builtinStatus?.runningThisModel) return (
-                            <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleBuiltinStop} disabled={builtinGlobalLoading}>
+                            <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleBuiltinStop} disabled={isAnyBusy}>
                               {b('停止', 'Stop')}
                             </Button>
                           );
                           if (builtinStatus?.modelInstalled) return (
-                            <Button size="sm" className="rounded-lg text-xs h-7" onClick={handleBuiltinRun} disabled={builtinGlobalLoading || !builtinStatus?.runtimeInstalled}>
+                            <Button size="sm" className="rounded-lg text-xs h-7" onClick={handleBuiltinRun} disabled={isAnyBusy || !builtinStatus?.runtimeInstalled}>
                               {builtinGlobalLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                               {b('启动', 'Start')}
                             </Button>
@@ -1237,7 +1239,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                     {builtinError && (
                       <div className="text-xs text-destructive bg-destructive/10 rounded-lg p-2 flex items-center justify-between gap-2">
                         <span className="break-all">{builtinError}</span>
-                        {lastFailedModelId && !builtinGlobalLoading && (
+                        {lastFailedModelId && !isAnyBusy && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -1383,7 +1385,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       <button
                         type="button"
                         onClick={() => setBuiltinAdvancedMode(true)}
-                        className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border/60 rounded-lg py-2 hover:bg-muted/50 transition-colors"
+                        disabled={isAnyBusy}
+                        className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border/60 rounded-lg py-2 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
                       >
                         <Settings className="w-3.5 h-3.5" />
                         {b('高级配置', 'Advanced Settings')}
@@ -1397,7 +1400,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       <button
                         type="button"
                         onClick={() => setBuiltinAdvancedMode(false)}
-                        className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 border border-primary/30 rounded-lg px-3 py-1.5 hover:bg-primary/5 transition-colors"
+                        disabled={isAnyBusy}
+                        className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 border border-primary/30 rounded-lg px-3 py-1.5 hover:bg-primary/5 transition-colors disabled:opacity-50 disabled:pointer-events-none"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
                         {b('返回简易模式', 'Back to Simple Mode')}
@@ -1461,7 +1465,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                           <div>
                             <div className="text-[11px] text-muted-foreground mb-1">{b('算力模式', 'Compute')}</div>
-                            <select value={builtinComputeMode} onChange={(e) => handleHardwareChange(() => setBuiltinComputeMode(e.target.value as any))} className="w-full px-2 py-1 border border-border rounded-lg bg-background text-foreground text-xs">
+                            <select value={builtinComputeMode} onChange={(e) => handleHardwareChange(() => setBuiltinComputeMode(e.target.value as any))} disabled={isAnyBusy} className="w-full px-2 py-1 border border-border rounded-lg bg-background text-foreground text-xs disabled:opacity-50">
                               <option value="cpu">CPU</option>
                               <option value="gpu">GPU</option>
                               <option value="hybrid">CPU + GPU</option>
@@ -1469,7 +1473,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                           </div>
                           <div>
                             <div className="text-[11px] text-muted-foreground mb-1">{b('GPU 后端', 'GPU Backend')}</div>
-                            <select value={builtinGpuBackend} onChange={(e) => handleHardwareChange(() => setBuiltinGpuBackend(e.target.value as any))} disabled={builtinComputeMode === 'cpu'} className="w-full px-2 py-1 border border-border rounded-lg bg-background text-foreground text-xs disabled:opacity-50">
+                            <select value={builtinGpuBackend} onChange={(e) => handleHardwareChange(() => setBuiltinGpuBackend(e.target.value as any))} disabled={builtinComputeMode === 'cpu' || isAnyBusy} className="w-full px-2 py-1 border border-border rounded-lg bg-background text-foreground text-xs disabled:opacity-50">
                               <option value="vulkan">Vulkan</option>
                               <option value="cuda">CUDA</option>
                               <option value="metal">Metal (macOS)</option>
@@ -1477,14 +1481,14 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                           </div>
                           <div>
                             <div className="text-[11px] text-muted-foreground mb-1">{b('CUDA 版本', 'CUDA Ver')}</div>
-                            <select value={builtinCudaVersion} onChange={(e) => handleHardwareChange(() => setBuiltinCudaVersion(e.target.value as any))} disabled={builtinComputeMode === 'cpu' || builtinGpuBackend !== 'cuda'} className="w-full px-2 py-1 border border-border rounded-lg bg-background text-foreground text-xs disabled:opacity-50">
+                            <select value={builtinCudaVersion} onChange={(e) => handleHardwareChange(() => setBuiltinCudaVersion(e.target.value as any))} disabled={builtinComputeMode === 'cpu' || builtinGpuBackend !== 'cuda' || isAnyBusy} className="w-full px-2 py-1 border border-border rounded-lg bg-background text-foreground text-xs disabled:opacity-50">
                               <option value="12.4">12.4</option>
                               <option value="13.1">13.1</option>
                             </select>
                           </div>
                           <div>
                             <div className="text-[11px] text-muted-foreground mb-1">{b('GPU Layers', 'GPU Layers')}</div>
-                            <input type="number" min={0} max={200} value={builtinGpuLayers} onChange={(e) => { setBuiltinGpuLayers(Number.parseInt(e.target.value || '0', 10)); saveSettings(); }} disabled={builtinComputeMode !== 'hybrid'} className="w-full px-2 py-1 border border-border rounded-lg bg-background text-foreground text-xs disabled:opacity-50" />
+                            <input type="number" min={0} max={200} value={builtinGpuLayers} onChange={(e) => { setBuiltinGpuLayers(Number.parseInt(e.target.value || '0', 10)); saveSettings(); }} disabled={builtinComputeMode !== 'hybrid' || isAnyBusy} className="w-full px-2 py-1 border border-border rounded-lg bg-background text-foreground text-xs disabled:opacity-50" />
                           </div>
                         </div>
 
@@ -1503,26 +1507,26 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <Button size="sm" className="rounded-lg text-xs h-7" onClick={handleBuiltinInstallRuntime} disabled={builtinGlobalLoading || runtimeInstalling || !!runtimeStatus?.installed}>
+                            <Button size="sm" className="rounded-lg text-xs h-7" onClick={handleBuiltinInstallRuntime} disabled={isAnyBusy || !!runtimeStatus?.installed}>
                               {runtimeInstalling ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Download className="w-3 h-3 mr-1" />}
                               {runtimeInstalling ? b('下载中', 'Downloading') : runtimeStatus?.installed ? b('已下载', 'Downloaded') : b('下载', 'Download')}
                             </Button>
                             {(builtinComputeMode !== 'cpu' && builtinGpuBackend === 'cuda') ? (
                               <>
-                                <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={() => handleBuiltinImportRuntime(b('选择 llama.cpp 运行时 zip', 'Select llama.cpp runtime zip'))} disabled={builtinGlobalLoading || runtimeInstalling}>
+                                <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={() => handleBuiltinImportRuntime(b('选择 llama.cpp 运行时 zip', 'Select llama.cpp runtime zip'))} disabled={isAnyBusy}>
                                   <Upload className="w-3 h-3 mr-1" />{b('导入运行时', 'Import Runtime')}
                                 </Button>
-                                <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={() => handleBuiltinImportRuntime(b('选择 cudart zip', 'Select cudart zip'))} disabled={builtinGlobalLoading || runtimeInstalling}>
+                                <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={() => handleBuiltinImportRuntime(b('选择 cudart zip', 'Select cudart zip'))} disabled={isAnyBusy}>
                                   <Upload className="w-3 h-3 mr-1" />{b('导入 cudart', 'Import cudart')}
                                 </Button>
                               </>
                             ) : (
-                              <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={() => handleBuiltinImportRuntime()} disabled={builtinGlobalLoading || runtimeInstalling}>
+                              <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={() => handleBuiltinImportRuntime()} disabled={isAnyBusy}>
                                 <Upload className="w-3 h-3 mr-1" />{b('导入 zip', 'Import zip')}
                               </Button>
                             )}
                             {runtimeStatus?.installed && (
-                              <Button size="sm" variant="ghost" className="rounded-lg text-xs h-7 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleBuiltinDeleteRuntime} disabled={builtinGlobalLoading || runtimeInstalling}>
+                              <Button size="sm" variant="ghost" className="rounded-lg text-xs h-7 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleBuiltinDeleteRuntime} disabled={isAnyBusy}>
                                 <Trash2 className="w-3 h-3 mr-1" />{b('删除', 'Delete')}
                               </Button>
                             )}
@@ -1597,24 +1601,24 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                                     <div className="text-[11px] text-muted-foreground mt-0.5">{m.subtitle} · {m.ramHint}</div>
                                   </div>
                                   {!isDefault && (
-                                    <Button size="sm" variant="ghost" className="rounded-lg text-xs h-6 px-2" onClick={() => handleSetDefaultModel(m.id)} disabled={builtinGlobalLoading || isBusy}>
+                                    <Button size="sm" variant="ghost" className="rounded-lg text-xs h-6 px-2" onClick={() => handleSetDefaultModel(m.id)} disabled={isAnyBusy}>
                                       {b('设为默认', 'Set Default')}
                                     </Button>
                                   )}
                                 </div>
                                 <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                                  <Button size="sm" className="rounded-lg text-xs h-7" onClick={() => handleBuiltinInstall(m.id)} disabled={builtinGlobalLoading || isBusy || !!s?.modelInstalled}>
+                                  <Button size="sm" className="rounded-lg text-xs h-7" onClick={() => handleBuiltinInstall(m.id)} disabled={isAnyBusy || !!s?.modelInstalled}>
                                     {isBusy ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Download className="w-3 h-3 mr-1" />}
                                     {isBusy ? b('下载中', 'Downloading') : s?.modelInstalled ? b('已下载', 'Downloaded') : b('下载', 'Download')}
                                   </Button>
-                                  <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={() => handleBuiltinImportModel(m.id)} disabled={builtinGlobalLoading || isBusy}>
+                                  <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={() => handleBuiltinImportModel(m.id)} disabled={isAnyBusy}>
                                     <Upload className="w-3 h-3 mr-1" />{b('导入', 'Import')}
                                   </Button>
-                                  <Button size="sm" variant="ghost" className="rounded-lg text-xs h-7" onClick={() => handleCopyModelLink(m.url)} disabled={builtinGlobalLoading || isBusy}>
+                                  <Button size="sm" variant="ghost" className="rounded-lg text-xs h-7" onClick={() => handleCopyModelLink(m.url)} disabled={isAnyBusy}>
                                     <Copy className="w-3 h-3 mr-1" />{b('链接', 'Link')}
                                   </Button>
-                                  {s?.modelInstalled && !s?.runningThisModel && (
-                                    <Button size="sm" variant="ghost" className="rounded-lg text-xs h-7 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleBuiltinDeleteModel(m.id)} disabled={builtinGlobalLoading || isBusy}>
+                                  {s?.modelInstalled && !s?.running && (
+                                    <Button size="sm" variant="ghost" className="rounded-lg text-xs h-7 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleBuiltinDeleteModel(m.id)} disabled={isAnyBusy}>
                                       <Trash2 className="w-3 h-3 mr-1" />{b('删除', 'Delete')}
                                     </Button>
                                   )}
@@ -1663,7 +1667,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                               <div className="text-sm font-medium">{b('自定义模型', 'Custom Models')}</div>
                               <div className="text-[11px] text-muted-foreground">{b('导入的 GGUF 文件（不含上方内置模型）', 'Imported GGUF files (excludes built-in models above)')}</div>
                             </div>
-                            <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleBuiltinImportCustomModel} disabled={builtinGlobalLoading}>
+                            <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleBuiltinImportCustomModel} disabled={isAnyBusy}>
                               <Upload className="w-3 h-3 mr-1" />{b('导入', 'Import')}
                             </Button>
                           </div>
@@ -1681,7 +1685,6 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                               <div className="space-y-1.5">
                                 {customModels.map((m) => {
                                   const isDefault = builtinModelId === m.modelId;
-                                  const isBusy = !!builtinLoadingById[m.modelId];
                                   return (
                                     <div key={m.fileName} className={`flex items-center justify-between gap-2 rounded-lg border p-2 transition-colors ${isDefault ? 'border-primary/40 bg-primary/5' : 'border-border/40'}`}>
                                       <div className="min-w-0 flex-1">
@@ -1692,11 +1695,11 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                                         {isDefault ? (
                                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">{b('默认', 'Default')}</span>
                                         ) : (
-                                          <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={() => handleSetDefaultModel(m.modelId)} disabled={builtinGlobalLoading || isBusy}>
+                                          <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" onClick={() => handleSetDefaultModel(m.modelId)} disabled={isAnyBusy}>
                                             {b('设为默认', 'Set Default')}
                                           </Button>
                                         )}
-                                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleBuiltinDeleteModel(m.modelId)} disabled={builtinGlobalLoading || isBusy || (isDefault && builtinStatus?.running)}>
+                                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleBuiltinDeleteModel(m.modelId)} disabled={isAnyBusy || builtinStatusById[m.modelId]?.running}>
                                           <Trash2 className="w-3 h-3" />
                                         </Button>
                                       </div>
@@ -1745,17 +1748,17 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                           {/* Action buttons */}
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {!isRunning ? (
-                              <Button size="sm" className="rounded-lg text-xs h-7" onClick={handleBuiltinRun} disabled={builtinGlobalLoading || !runtimeStatus?.installed || !builtinStatus?.modelInstalled}>
+                              <Button size="sm" className="rounded-lg text-xs h-7" onClick={handleBuiltinRun} disabled={isAnyBusy || !runtimeStatus?.installed || !builtinStatus?.modelInstalled}>
                                 {builtinGlobalLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Zap className="w-3 h-3 mr-1" />}
                                 {b('启动服务', 'Start Service')}
                               </Button>
                             ) : configChanged ? (
                               <>
-                                <Button size="sm" className="rounded-lg text-xs h-7 bg-amber-600 hover:bg-amber-700" onClick={handleBuiltinRun} disabled={builtinGlobalLoading || !runtimeStatus?.installed || !builtinStatus?.modelInstalled}>
+                                <Button size="sm" className="rounded-lg text-xs h-7 bg-amber-600 hover:bg-amber-700" onClick={handleBuiltinRun} disabled={isAnyBusy || !runtimeStatus?.installed || !builtinStatus?.modelInstalled}>
                                   {builtinGlobalLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <RefreshCw className="w-3 h-3 mr-1" />}
                                   {b('应用并重启', 'Apply & Restart')}
                                 </Button>
-                                <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleBuiltinStop} disabled={builtinGlobalLoading}>
+                                <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleBuiltinStop} disabled={isAnyBusy}>
                                   {b('停止', 'Stop')}
                                 </Button>
                                 <span className="text-[10px] text-amber-600">{b('模型或硬件配置已变更，需要重启生效', 'Model or hardware config changed, restart to apply')}</span>
@@ -1766,7 +1769,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                                   <CheckCircle className="w-3 h-3 mr-1" />
                                   {b('运行中', 'Running')}
                                 </Button>
-                                <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleBuiltinStop} disabled={builtinGlobalLoading}>
+                                <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={handleBuiltinStop} disabled={isAnyBusy}>
                                   {b('停止', 'Stop')}
                                 </Button>
                               </>
@@ -1815,7 +1818,10 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                         </Button>
                       </div>
                     </div>
-                    <input type="text" value={ollamaUrl} onChange={(e) => { setOllamaUrl(e.target.value); saveSettings(); }} className="w-full px-2.5 py-1.5 border border-border/60 rounded-md bg-background text-foreground text-xs font-mono" placeholder="http://localhost:11434" />
+                    <input type="text" value={ollamaUrl} onChange={(e) => { setOllamaUrl(e.target.value); saveSettings(); setConnectionStatus('unknown'); }} className="w-full px-2.5 py-1.5 border border-border/60 rounded-md bg-background text-foreground text-xs font-mono" placeholder="http://localhost:11434" />
+                    {ollamaUrl && !/^https?:\/\/.+/.test(ollamaUrl) && (
+                      <p className="text-[10px] text-amber-600">{b('URL 应以 http:// 或 https:// 开头', 'URL should start with http:// or https://')}</p>
+                    )}
                   </div>
                   {/* Model row */}
                   <div className="px-4 py-3 space-y-1.5">
@@ -1849,6 +1855,9 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       <span className="text-[10px] text-muted-foreground/60">{b('需包含', 'Must include')} /v1</span>
                     </div>
                     <input type="text" value={openAICompatibleBaseUrl} onChange={(e) => { setOpenAICompatibleBaseUrl(e.target.value); saveSettings(); }} className="w-full px-2.5 py-1.5 border border-border/60 rounded-md bg-background text-foreground text-xs font-mono" placeholder="https://api.openai.com/v1" />
+                    {openAICompatibleBaseUrl && !openAICompatibleBaseUrl.replace(/\/+$/, '').endsWith('/v1') && (
+                      <p className="text-[10px] text-amber-600">{b('Base URL 通常以 /v1 结尾', 'Base URL typically ends with /v1')}</p>
+                    )}
                   </div>
                   <div className="px-4 py-3 space-y-1.5">
                     <span className="text-sm">API Key</span>
@@ -1915,7 +1924,14 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       <div className="text-[11px] text-muted-foreground">
                         {b('自定义下载链接，留空使用默认镜像', 'Custom download URLs. Leave empty for default mirror.')}
                       </div>
-                      <Button variant="outline" size="sm" className="rounded-lg text-xs h-6 px-2" onClick={() => { resetAllBuiltinDownloadUrls(); saveSettings(); }}>
+                      <Button variant="outline" size="sm" className="rounded-lg text-xs h-6 px-2" onClick={async () => {
+                          const { confirm } = await import("@tauri-apps/plugin-dialog");
+                          const ok = await confirm(b("确定要重置所有下载链接到默认值吗？", "Reset all download URLs to defaults?"), {
+                            title: b("重置下载链接", "Reset Download URLs"), kind: "warning", okLabel: b("重置", "Reset"), cancelLabel: b("取消", "Cancel"),
+                          });
+                          if (!ok) return;
+                          resetAllBuiltinDownloadUrls(); saveSettings();
+                        }}>
                         <RotateCcw className="w-3 h-3 mr-1" />{b('全部重置', 'Reset All')}
                       </Button>
                     </div>
@@ -1949,7 +1965,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                                 value={builtinDownloadUrls[e.key] || ''}
                                 onChange={(ev) => { setBuiltinDownloadUrl(e.key, ev.target.value); saveSettings(); }}
                                 placeholder={urls[0]}
-                                className="w-full px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-[11px] font-mono placeholder:text-muted-foreground/40"
+                                disabled={isAnyBusy}
+                                className="w-full px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-[11px] font-mono placeholder:text-muted-foreground/40 disabled:opacity-50"
                               />
                               <div className="text-[10px] text-muted-foreground/60 font-mono truncate" title={urls[1]}>
                                 {b('备用', 'Alt')}: {urls[1]}
@@ -1980,7 +1997,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                           value={builtinDownloadUrls[mc.id] || ''}
                           onChange={(ev) => { setBuiltinDownloadUrl(mc.id, ev.target.value); saveSettings(); }}
                           placeholder={mc.urls[0]}
-                          className="w-full px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-[11px] font-mono placeholder:text-muted-foreground/40"
+                          disabled={isAnyBusy}
+                          className="w-full px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-[11px] font-mono placeholder:text-muted-foreground/40 disabled:opacity-50"
                         />
                         <div className="text-[10px] text-muted-foreground/60 font-mono truncate" title={mc.urls[1]}>
                           {b('备用', 'Alt')}: {mc.urls[1]}
@@ -2054,7 +2072,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                         <div className="text-sm">{b('重置应用', 'Reset App')}</div>
                         <div className="text-[11px] text-muted-foreground mt-0.5">{b('清空所有数据：文档、词典、模型、笔记、设置', 'Clear all data: documents, dictionaries, models, notes, settings')}</div>
                       </div>
-                      <Button variant="destructive" size="sm" className="rounded-lg text-xs h-7 flex-shrink-0" onClick={handleResetAllData} disabled={builtinGlobalLoading}>
+                      <Button variant="destructive" size="sm" className="rounded-lg text-xs h-7 flex-shrink-0" onClick={handleResetAllData} disabled={isAnyBusy}>
                         {builtinGlobalLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
                         {builtinGlobalLoading ? b('重置中...', 'Resetting...') : b('清空所有数据', 'Clear All Data')}
                       </Button>
