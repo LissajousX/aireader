@@ -37,6 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
     libnghttp2-dev \
     libpsl-dev \
+    liblcms2-dev \
     libenchant-dev libsecret-1-dev libnotify-dev libhyphen-dev \
     libopenjp2-7-dev libwoff-dev libtasn1-6-dev \
     libxt-dev libx11-dev libxcomposite-dev libxdamage-dev \
