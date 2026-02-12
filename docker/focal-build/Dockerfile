@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Tauri / GTK runtime & dev deps
     libgtk-3-dev libgdk-pixbuf2.0-dev libglib2.0-dev \
     libappindicator3-dev librsvg2-dev patchelf \
+    libffi-dev libpcre2-dev libmount-dev gettext \
     # WebKitGTK build deps (available in focal)
     libicu-dev libxml2-dev libxslt1-dev libsqlite3-dev \
     libgcrypt20-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
@@ -53,7 +54,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip3 install --upgrade pip && pip3 install meson
 
 # ---------------------------------------------------------------------------
-# 2. Build libsoup 3.0.8 from source
+# ---------------------------------------------------------------------------
+# 2. Build GLib (>=2.69 required by libsoup3)
+# ---------------------------------------------------------------------------
+ARG GLIB_VERSION=2.72.4
+RUN cd /tmp && \
+    wget -q https://download.gnome.org/sources/glib/${GLIB_VERSION%.*}/glib-${GLIB_VERSION}.tar.xz && \
+    tar xf glib-${GLIB_VERSION}.tar.xz && \
+    cd glib-${GLIB_VERSION} && \
+    meson setup _build \
+        --prefix=/usr \
+        --buildtype=release \
+        -Dtests=false \
+        -Dman=false \
+        -Dselinux=disabled \
+        -Dsystemtap=disabled \
+        -Dxattr=false \
+        -Dlibmount=enabled && \
+    ninja -C _build -j$(nproc) && \
+    ninja -C _build install && \
+    ldconfig && \
+    rm -rf /tmp/glib-*
+
+# ---------------------------------------------------------------------------
+# 3. Build libsoup 3.0.8 from source
 #    (focal only has libsoup 2.4; WebKitGTK 4.1 API requires libsoup3)
 # ---------------------------------------------------------------------------
 ARG LIBSOUP_VERSION=3.0.8
@@ -77,7 +101,7 @@ RUN cd /tmp && \
     rm -rf /tmp/libsoup-*
 
 # ---------------------------------------------------------------------------
-# 3. Build WebKitGTK 2.36.8 from source (minimal, GTK port, 4.1 API only)
+# 4. Build WebKitGTK 2.36.8 from source (minimal, GTK port, 4.1 API only)
 #    2.36 is the first version with the webkit2gtk-4.1 pkg-config name.
 #    We disable as much as possible to speed up compilation.
 # ---------------------------------------------------------------------------
