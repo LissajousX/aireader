@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libicu-dev libxml2-dev libxslt1-dev libsqlite3-dev \
     libgcrypt20-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
     libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+    libnghttp2-dev \
     libenchant-dev libsecret-1-dev libnotify-dev libhyphen-dev \
     libopenjp2-7-dev libwoff-dev libtasn1-6-dev \
     libxt-dev libx11-dev libxcomposite-dev libxdamage-dev \
