@@ -68,7 +68,7 @@ RUN cd /tmp && \
         -Dtests=false \
         -Dman=false \
         -Dselinux=disabled \
-        -Dsystemtap=disabled \
+        -Dsystemtap=false \
         -Dxattr=false \
         -Dlibmount=enabled && \
     ninja -C _build -j$(nproc) && \
