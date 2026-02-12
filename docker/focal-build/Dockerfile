@@ -68,7 +68,6 @@ RUN cd /tmp && \
         -Dsysprof=disabled \
         -Dintrospection=disabled \
         -Dvapi=disabled \
-        -Ddocs=disabled \
         -Dntlm=disabled \
         -Dbrotli=disabled \
         -Dgssapi=disabled && \
