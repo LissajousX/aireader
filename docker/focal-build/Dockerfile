@@ -19,6 +19,7 @@ FROM ubuntu:20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
+ENV PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig
 
 # ---------------------------------------------------------------------------
 # 1. System packages available in focal repos
@@ -137,6 +138,9 @@ RUN cd /tmp && \
     ninja -C _build -j$(( $(nproc) > 4 ? 4 : $(nproc) )) && \
     ninja -C _build install && \
     ldconfig && \
+    pkg-config --modversion webkit2gtk-4.1 && \
+    pkg-config --modversion javascriptcoregtk-4.1 && \
+    pkg-config --variable pcfiledir javascriptcoregtk-4.1 && \
     rm -rf /tmp/webkitgtk-*
 
 # Verify webkit2gtk-4.1 is available
