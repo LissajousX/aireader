@@ -169,7 +169,7 @@ jobs:
   build-focal:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/${{ github.repository_owner }}/aireader-focal-build:latest
+      image: ghcr.io/lissajousx/aireader-focal-build:latest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
