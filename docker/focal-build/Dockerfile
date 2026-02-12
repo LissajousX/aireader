@@ -127,6 +127,7 @@ RUN cd /tmp && \
         -DUSE_SYSTEMD=OFF \
         -DENABLE_JOURNALD_LOG=OFF \
         -DUSE_GTK4=OFF \
+        -DUSE_WPE_RENDERER=OFF \
         -DENABLE_GEOLOCATION=OFF \
         -DENABLE_WEB_AUDIO=OFF \
         -DUSE_SYSTEM_MALLOC=ON \
