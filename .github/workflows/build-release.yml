@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  packages: read
 
 env:
   CARGO_INCREMENTAL: 0
@@ -159,3 +160,66 @@ jobs:
           name: aireader-${{ matrix.target }}
           path: ${{ matrix.artifact_pattern }}
           if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Ubuntu 20.04 (Focal) compatible build via Docker container
+  # Requires the focal build image to be pre-built via build-focal-image.yml
+  # Produces AppImage linked against glibc 2.31 (compatible with Ubuntu 20.04+)
+  # ---------------------------------------------------------------------------
+  build-focal:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/aireader-focal-build:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Inject version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Injecting version: $VERSION"
+          cd src-tauri
+          python3 -c "
+          import json
+          with open('tauri.conf.json', 'r') as f: c = json.load(f)
+          c['version'] = '$VERSION'
+          with open('tauri.conf.json', 'w') as f: json.dump(c, f, indent=2, ensure_ascii=False)
+          print(f'Updated tauri.conf.json version to {c[\"version\"]}')"
+          grep '"version"' tauri.conf.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        env:
+          CARGO_INCREMENTAL: "0"
+        run: npx tauri build --target x86_64-unknown-linux-gnu --bundles appimage
+
+      - name: Rename AppImage (mark as focal-compatible)
+        shell: bash
+        run: |
+          cd src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage
+          for f in *.AppImage; do
+            mv "$f" "${f%.AppImage}-ubuntu2004.AppImage"
+          done
+          ls -lh *.AppImage
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aireader-x86_64-linux-focal
+          path: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage

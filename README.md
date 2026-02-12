@@ -52,12 +52,13 @@
 
 ## 🖥️ 支持平台
 
-| 平台 | GPU 加速 |
-|:---|:---|
-| **Windows x64** | CUDA 12.4/13.1 · Vulkan · CPU |
-| **macOS arm64** | Metal (CPU+GPU 统一内存) |
-| **macOS x64** | CPU |
-| **Ubuntu x64** | Vulkan · CPU |
+| 平台 | GPU 加速 | 安装包 |
+|:---|:---|:---|
+| **Windows x64** | CUDA 12.4/13.1 · Vulkan · CPU | `.exe` (NSIS) |
+| **macOS arm64** | Metal (CPU+GPU 统一内存) | `.dmg` |
+| **macOS x64** | CPU | `.dmg` |
+| **Ubuntu 22.04+ x64** | Vulkan · CPU | `.deb` / `.AppImage` |
+| **Ubuntu 20.04+ x64** | Vulkan · CPU | `.AppImage` (focal 兼容版) |
 
 ## 🚀 快速开始
 

@@ -52,12 +52,13 @@
 
 ## �️ Supported Platforms
 
-| Platform | GPU Acceleration |
-|:---|:---|
-| **Windows x64** | CUDA 12.4/13.1 · Vulkan · CPU |
-| **macOS arm64** | Metal (CPU+GPU unified memory) |
-| **macOS x64** | CPU |
-| **Ubuntu x64** | Vulkan · CPU |
+| Platform | GPU Acceleration | Package |
+|:---|:---|:---|
+| **Windows x64** | CUDA 12.4/13.1 · Vulkan · CPU | `.exe` (NSIS) |
+| **macOS arm64** | Metal (CPU+GPU unified memory) | `.dmg` |
+| **macOS x64** | CPU | `.dmg` |
+| **Ubuntu 22.04+ x64** | Vulkan · CPU | `.deb` / `.AppImage` |
+| **Ubuntu 20.04+ x64** | Vulkan · CPU | `.AppImage` (focal build) |
 
 ## 🚀 Quick Start
 
