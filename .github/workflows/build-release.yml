@@ -96,6 +96,23 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # macOS: self-check Apple certificate before signing
+      - name: Verify Apple certificate (macOS)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -e
+          CERT_PATH=/tmp/apple-cert.p12
+          echo "Decoding APPLE_CERTIFICATE to $CERT_PATH"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          echo "SHA256 (for debugging length only):"
+          shasum -a 256 "$CERT_PATH"
+          echo "Running openssl pkcs12 -info (no keys) to verify password..."
+          openssl pkcs12 -info -in "$CERT_PATH" -nokeys -passin env:APPLE_CERTIFICATE_PASSWORD >/tmp/p12-info.txt
+          head -20 /tmp/p12-info.txt
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
