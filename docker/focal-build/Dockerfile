@@ -195,7 +195,14 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
     rustup target add x86_64-unknown-linux-gnu
 
 # ---------------------------------------------------------------------------
-# 7. Final verification
+# 7. AppImage bundling tools (linuxdeploy needs these at runtime)
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    file squashfs-tools libfuse2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# 8. Final verification
 # ---------------------------------------------------------------------------
 RUN echo "=== Build Environment ===" && \
     echo "glibc:              $(ldd --version | head -1)" && \

@@ -33,6 +33,11 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Install linuxdeploy runtime deps
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq file squashfs-tools libfuse2 > /dev/null
+
       - name: Verify build environment
         shell: bash
         run: |
