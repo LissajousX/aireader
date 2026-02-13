@@ -288,6 +288,9 @@ Windows x64、macOS (arm64/x64)、Ubuntu 22.04+ x64、Ubuntu 20.04 x64（focal �
 **Q: 如何更新？**
 下载新版安装包直接运行即可，自动覆盖旧版本。文档、笔记、模型和设置均会保留。
 
+**Q: Linux 虚拟机中打开后界面全白？**
+这是 WebKitGTK GPU 合成在虚拟机中渲染失败导致的。v1.1.0 起应用会自动检测虚拟机环境并禁用 GPU 合成。如果仍遇到白屏，可手动设置环境变量启动：`WEBKIT_DISABLE_COMPOSITING_MODE=1 aireader`
+
 **Q: Ubuntu 20.04 有专用版本吗？**
 有。v1.1.0 起提供 focal 专用 AppImage，内含自编译的 llama.cpp 运行时，无需高版本 glibc。请下载文件名带 `focal` 的 AppImage。
 
