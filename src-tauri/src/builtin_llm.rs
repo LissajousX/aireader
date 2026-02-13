@@ -41,7 +41,19 @@ fn is_bundled_runtime_only() -> bool { false }
 /// but the host only has 2.31).
 #[cfg(target_os = "linux")]
 fn validate_runtime_binary(server: &Path) -> bool {
-    match Command::new(server).arg("--version").output() {
+    // Set LD_LIBRARY_PATH so that libllama.so.0 etc. next to the binary are found.
+    let mut cmd = Command::new(server);
+    cmd.arg("--version");
+    if let Some(parent) = server.parent() {
+        let existing = std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default();
+        let mut ld = std::ffi::OsString::from(parent);
+        if !existing.is_empty() {
+            ld.push(":");
+            ld.push(&existing);
+        }
+        cmd.env("LD_LIBRARY_PATH", ld);
+    }
+    match cmd.output() {
         Ok(out) => {
             if out.status.success() { return true; }
             let stderr = String::from_utf8_lossy(&out.stderr);
@@ -299,6 +311,25 @@ fn cuda_dlls_present(dir: &Path) -> bool {
         }
     }
     false
+}
+
+/// Build an LD_LIBRARY_PATH string that prepends the runtime directory (and the exe's parent dir)
+/// so that shared libraries like libllama.so.0, libggml.so.0 are found by the dynamic linker.
+#[cfg(target_os = "linux")]
+fn prepend_runtime_to_ld_path(exe_path: &Path, rt_dir: &Path) -> std::ffi::OsString {
+    use std::ffi::OsString;
+    let existing = std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default();
+    let mut new_path = OsString::new();
+    if let Some(parent) = exe_path.parent() {
+        new_path.push(parent);
+        new_path.push(":");
+    }
+    new_path.push(rt_dir);
+    if !existing.is_empty() {
+        new_path.push(":");
+        new_path.push(&existing);
+    }
+    new_path
 }
 
 /// Build a PATH string that prepends the runtime directory (and optionally the exe's parent dir)
@@ -2270,7 +2301,7 @@ async fn ensure_running_impl(
         cmd.arg("--n-gpu-layers").arg("0");
     }
 
-    // Ensure CUDA/Vulkan DLLs are discoverable by prepending runtime dir to PATH
+    // Ensure shared libraries are discoverable by the platform's dynamic linker.
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -2278,6 +2309,11 @@ async fn ensure_running_impl(
         let rt = runtime_dir(&state.llm_dir, compute_mode, gpu_backend, cuda_version);
         cmd.env("PATH", prepend_runtime_to_path(&server, &rt));
         cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let rt = runtime_dir(&state.llm_dir, compute_mode, gpu_backend, cuda_version);
+        cmd.env("LD_LIBRARY_PATH", prepend_runtime_to_ld_path(&server, &rt));
     }
 
     let child = cmd.spawn().map_err(|e| e.to_string())?;
@@ -2663,17 +2699,21 @@ pub async fn builtin_llm_benchmark(
             .map_err(|e| format!("failed to run llama-bench: {e}"))?
     };
     #[cfg(not(target_os = "windows"))]
-    let output = Command::new(&bench_exe)
-        .args([
+    let output = {
+        let mut cmd = Command::new(&bench_exe);
+        cmd.args([
             "-m", &model_path.to_string_lossy(),
             "-p", "0",
             "-n", "64",
             "-r", "1",
             "-ngl", &ngl,
             "-o", "json",
-        ])
-        .output()
-        .map_err(|e| format!("failed to run llama-bench: {e}"))?;
+        ]);
+        #[cfg(target_os = "linux")]
+        cmd.env("LD_LIBRARY_PATH", prepend_runtime_to_ld_path(&bench_exe, &rt));
+        cmd.output()
+            .map_err(|e| format!("failed to run llama-bench: {e}"))?
+    };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
