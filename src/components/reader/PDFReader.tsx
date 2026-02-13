@@ -184,6 +184,8 @@ export function PDFReader({ filePath, onTextSelect }: PDFReaderProps) {
       try {
         setError(null);
         setLoading(true);
+        // Ensure PDF worker is ready (on old engines, loads worker on main thread)
+        await (window as any).__pdfWorkerReady;
         // 尝试从缓存获取
         const cached = getFromCache(filePath);
         let arrayBuffer: ArrayBuffer;
