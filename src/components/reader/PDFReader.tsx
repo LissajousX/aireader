@@ -11,12 +11,14 @@ import { ResizeHandle } from "@/components/ui/ResizeHandle";
 import { useI18n } from "@/i18n";
 
 // Configure pdfjs worker.
+// MUST always set workerSrc to a valid URL; the default bare specifier
+// "pdf.worker.mjs" is not a valid URL and fails in WebKitGTK.
 // On engines lacking native Promise.withResolvers (e.g. WebKitGTK 2.42),
-// the worker thread doesn't have our polyfill, so disable the worker
-// and let pdfjs parse on the main thread where the polyfill is available.
-if ((window as any).__nativePromiseWithResolvers !== false) {
-  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-}
+// the real Worker will crash (no polyfill in worker scope), and pdfjs
+// will automatically fall back to "fake worker" mode which loads the
+// worker script on the main thread via import() — where our polyfill
+// IS available — so PDF parsing still works.
+pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 interface PDFReaderProps {
   filePath: string;

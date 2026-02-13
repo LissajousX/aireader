@@ -72,6 +72,7 @@ jobs:
           cmake -B build-cpu -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=/usr/bin/gcc-11 \
             -DCMAKE_CXX_COMPILER=/usr/bin/g++-11 \
+            -DCMAKE_BUILD_RPATH='$ORIGIN' \
             -DGGML_NATIVE=OFF \
             -DLLAMA_BUILD_TESTS=OFF \
             -DLLAMA_BUILD_EXAMPLES=OFF \
@@ -81,8 +82,7 @@ jobs:
           DIR_CPU="llama-b7966"
           mkdir -p "$DIR_CPU"
           cp build-cpu/bin/llama-server build-cpu/bin/llama-bench "$DIR_CPU/"
-          cp build-cpu/bin/libllama.so build-cpu/bin/libggml*.so "$DIR_CPU/" 2>/dev/null || true
-          cp build-cpu/bin/libmtmd.so "$DIR_CPU/" 2>/dev/null || true
+          cp -a build-cpu/bin/lib*.so* "$DIR_CPU/" 2>/dev/null || true
           tar czf "$DEST/llama-b7966-bin-ubuntu-x64.tar.gz" "$DIR_CPU"
           echo "CPU runtime:"; ls -lh "$DEST/llama-b7966-bin-ubuntu-x64.tar.gz"
 
@@ -90,6 +90,7 @@ jobs:
           cmake -B build-vk -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=/usr/bin/gcc-11 \
             -DCMAKE_CXX_COMPILER=/usr/bin/g++-11 \
+            -DCMAKE_BUILD_RPATH='$ORIGIN' \
             -DGGML_NATIVE=OFF \
             -DGGML_VULKAN=ON \
             -DLLAMA_BUILD_TESTS=OFF \
@@ -100,8 +101,7 @@ jobs:
           DIR_VK="llama-b7966-vulkan"
           mkdir -p "$DIR_VK"
           cp build-vk/bin/llama-server build-vk/bin/llama-bench "$DIR_VK/"
-          cp build-vk/bin/libllama.so build-vk/bin/libggml*.so "$DIR_VK/" 2>/dev/null || true
-          cp build-vk/bin/libmtmd.so "$DIR_VK/" 2>/dev/null || true
+          cp -a build-vk/bin/lib*.so* "$DIR_VK/" 2>/dev/null || true
           tar czf "$DEST/llama-b7966-bin-ubuntu-vulkan-x64.tar.gz" "$DIR_VK"
           echo "Vulkan runtime:"; ls -lh "$DEST/llama-b7966-bin-ubuntu-vulkan-x64.tar.gz"
 
