@@ -109,7 +109,7 @@ RUN cd /tmp && \
 #    2.36 is the first version with the webkit2gtk-4.1 pkg-config name.
 #    We disable as much as possible to speed up compilation.
 # ---------------------------------------------------------------------------
-ARG WEBKIT_VERSION=2.36.8
+ARG WEBKIT_VERSION=2.38.5
 RUN cd /tmp && \
     wget -q https://webkitgtk.org/releases/webkitgtk-${WEBKIT_VERSION}.tar.xz && \
     tar xf webkitgtk-${WEBKIT_VERSION}.tar.xz && \
