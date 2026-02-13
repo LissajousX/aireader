@@ -2879,4 +2879,116 @@ mod tests {
         let llm = Path::new("/llm");
         assert_eq!(runtime_dir(llm, "hybrid", "metal", "12.4"), llm.join("runtime/metal"));
     }
+
+    // ── is_bundled_runtime_only ──
+
+    #[test]
+    fn test_is_bundled_runtime_only_returns_bool() {
+        // On any test host this must return a valid bool without panicking.
+        let result = is_bundled_runtime_only();
+        // On non-Linux (macOS / Windows) it must always be false.
+        #[cfg(not(target_os = "linux"))]
+        assert_eq!(result, false, "Non-Linux platforms must never be bundled-only");
+        // On Linux, just ensure it doesn't panic (actual value depends on host glibc).
+        #[cfg(target_os = "linux")]
+        let _ = result;
+    }
+
+    #[test]
+    fn test_builtin_llm_is_bundled_only_matches() {
+        // The Tauri command wrapper must return the same value as the underlying fn.
+        assert_eq!(builtin_llm_is_bundled_only(), is_bundled_runtime_only());
+    }
+
+    // ── default_runtime_zip_name (platform-conditional) ──
+
+    #[test]
+    fn test_runtime_zip_name_cpu() {
+        let name = default_runtime_zip_name("cpu", "vulkan", "12.4");
+        #[cfg(target_os = "windows")]
+        assert_eq!(name, "llama-b7966-bin-win-cpu-x64.zip");
+        #[cfg(target_os = "macos")]
+        assert!(name.starts_with("llama-b7966-bin-macos-"));
+        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+        assert_eq!(name, "llama-b7966-bin-ubuntu-x64.tar.gz");
+    }
+
+    #[test]
+    fn test_runtime_zip_name_gpu_vulkan() {
+        let name = default_runtime_zip_name("gpu", "vulkan", "12.4");
+        #[cfg(target_os = "windows")]
+        assert_eq!(name, "llama-b7966-bin-win-vulkan-x64.zip");
+        #[cfg(target_os = "macos")]
+        assert!(name.starts_with("llama-b7966-bin-macos-"));
+        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+        assert_eq!(name, "llama-b7966-bin-ubuntu-vulkan-x64.tar.gz");
+    }
+
+    #[test]
+    fn test_runtime_zip_name_gpu_cuda() {
+        let name_124 = default_runtime_zip_name("gpu", "cuda", "12.4");
+        let name_131 = default_runtime_zip_name("gpu", "cuda", "13.1");
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(name_124, "llama-b7966-bin-win-cuda-12.4-x64.zip");
+            assert_eq!(name_131, "llama-b7966-bin-win-cuda-13.1-x64.zip");
+        }
+        #[cfg(target_os = "macos")]
+        {
+            // macOS ignores compute_mode/gpu_backend
+            assert!(name_124.starts_with("llama-b7966-bin-macos-"));
+        }
+        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+        {
+            // Linux falls back to vulkan for CUDA requests
+            assert_eq!(name_124, "llama-b7966-bin-ubuntu-vulkan-x64.tar.gz");
+            assert_eq!(name_131, "llama-b7966-bin-ubuntu-vulkan-x64.tar.gz");
+        }
+    }
+
+    #[test]
+    fn test_runtime_zip_name_hybrid_mode() {
+        // "hybrid" should be treated same as "gpu"
+        let name = default_runtime_zip_name("hybrid", "vulkan", "12.4");
+        #[cfg(target_os = "windows")]
+        assert_eq!(name, "llama-b7966-bin-win-vulkan-x64.zip");
+        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+        assert_eq!(name, "llama-b7966-bin-ubuntu-vulkan-x64.tar.gz");
+    }
+
+    // ── find_llama_server ──
+
+    #[test]
+    fn test_find_llama_server_empty_dir() {
+        let tmp = std::env::temp_dir().join("test_find_llama_empty");
+        let _ = std::fs::create_dir_all(&tmp);
+        assert!(find_llama_server(&tmp).is_none());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_find_llama_server_finds_binary() {
+        let tmp = std::env::temp_dir().join("test_find_llama_bin");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let sub = tmp.join("llama-b7966");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("llama-server"), b"fake").unwrap();
+        let found = find_llama_server(&tmp);
+        assert!(found.is_some(), "Should find llama-server in subdirectory");
+        assert!(found.unwrap().ends_with("llama-server"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_find_llama_server_finds_in_nested_dir() {
+        // Simulates Vulkan runtime extracted as llama-b7966-vulkan/llama-server
+        let tmp = std::env::temp_dir().join("test_find_llama_nested");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let sub = tmp.join("llama-b7966-vulkan");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("llama-server"), b"fake").unwrap();
+        let found = find_llama_server(&tmp);
+        assert!(found.is_some(), "Should find llama-server in vulkan subdirectory");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
