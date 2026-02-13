@@ -10,8 +10,13 @@ import { ChevronLeft } from "lucide-react";
 import { ResizeHandle } from "@/components/ui/ResizeHandle";
 import { useI18n } from "@/i18n";
 
-// 配置 pdfjs worker
-pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+// Configure pdfjs worker.
+// On engines lacking native Promise.withResolvers (e.g. WebKitGTK 2.42),
+// the worker thread doesn't have our polyfill, so disable the worker
+// and let pdfjs parse on the main thread where the polyfill is available.
+if ((window as any).__nativePromiseWithResolvers !== false) {
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+}
 
 interface PDFReaderProps {
   filePath: string;

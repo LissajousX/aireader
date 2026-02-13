@@ -1263,6 +1263,18 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   {/* Simple mode: one-click setup */}
                   {!builtinAdvancedMode && (
                     <div className="space-y-3">
+                      {/* Hint: built-in AI is optional */}
+                      {!(builtinStatus?.running && builtinStatus?.runningThisModel) && !builtinGlobalLoading && (
+                        <div className="flex items-start gap-2 rounded-lg bg-muted/40 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                          <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
+                          <span>
+                            {b(
+                              '内置 AI 为可选功能。你也可以在下方"AI 服务"配置 Ollama 或 OpenAI 兼容 API。',
+                              'Built-in AI is optional. You can also configure Ollama or an OpenAI-compatible API under "AI Service" below.'
+                            )}
+                          </span>
+                        </div>
+                      )}
                       <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
                         <div className="flex items-start gap-3">
                           <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0 mt-0.5">

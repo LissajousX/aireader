@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { ChevronRight, ChevronLeft, Sparkles, Check, Loader2, Zap, BookOpen, ChevronDown, Globe, Server, CheckCircle, Wifi, Award, AlertTriangle, HardDrive, Cpu } from "lucide-react";
+import { ChevronRight, ChevronLeft, Sparkles, Check, Loader2, Zap, BookOpen, ChevronDown, Globe, Server, CheckCircle, Wifi, Award, AlertTriangle, HardDrive, Cpu, Info } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { invoke, Channel } from "@tauri-apps/api/core";
@@ -467,6 +467,19 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               <h2 className="text-xl font-bold">{b("配置 AI 服务", "Configure AI Service")}</h2>
               <p className="text-sm text-muted-foreground mt-1">{b("可同时配置多个 AI 来源，稍后在面板中切换", "Configure multiple AI providers, switch in panel later")}</p>
             </div>
+
+            {/* Hint: built-in AI is optional */}
+            {!builtinConfigured && !aiStep && benchPhase !== 'selecting' && (
+              <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 px-4 py-3 text-[12px] leading-relaxed text-muted-foreground">
+                <Info className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground/70" />
+                <span>
+                  {b(
+                    '本地 AI 为可选项。如果你已有 Ollama 或 OpenAI 兼容 API，可直接展开下方对应面板配置，或点击"跳过"稍后设置。',
+                    'Local AI is optional. If you already have Ollama or an OpenAI-compatible API, expand the panel below to configure it, or click "Skip" to set up later.'
+                  )}
+                </span>
+              </div>
+            )}
 
             {/* Progress / error display for builtin setup */}
             {aiStep && (

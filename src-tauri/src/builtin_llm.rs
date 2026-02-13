@@ -36,6 +36,31 @@ fn is_bundled_runtime_only() -> bool {
 #[cfg(not(target_os = "linux"))]
 fn is_bundled_runtime_only() -> bool { false }
 
+/// On Linux, verify a binary can actually be loaded by the dynamic linker.
+/// Returns false if glibc symbols are missing (e.g. downloaded binary needs GLIBC_2.34
+/// but the host only has 2.31).
+#[cfg(target_os = "linux")]
+fn validate_runtime_binary(server: &Path) -> bool {
+    match Command::new(server).arg("--version").output() {
+        Ok(out) => {
+            if out.status.success() { return true; }
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            if stderr.contains("GLIBC_") && stderr.contains("not found") {
+                log::warn!("[builtin_llm] Runtime binary is incompatible: {}", stderr.trim());
+                return false;
+            }
+            // Non-zero exit for other reasons (e.g. --version not supported) is fine
+            true
+        }
+        Err(e) => {
+            log::warn!("[builtin_llm] Cannot execute runtime binary {}: {}", server.display(), e);
+            false
+        }
+    }
+}
+#[cfg(not(target_os = "linux"))]
+fn validate_runtime_binary(_server: &Path) -> bool { true }
+
 #[derive(Debug, Serialize)]
 pub struct BuiltinLlmStatus {
     #[serde(rename = "runtimeInstalled")]
@@ -1009,46 +1034,58 @@ async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode:
 
     // Return early if already installed — do NOT create dirs eagerly
     if let Some(server) = find_llama_server(&rt) {
-        // For CUDA on Windows, also verify that cudart DLLs (cublas) are present.
-        // If missing, attempt to download cudart only (not the full runtime).
-        #[cfg(target_os = "windows")]
-        if (compute_mode == "gpu" || compute_mode == "hybrid")
-            && gpu_backend.eq_ignore_ascii_case("cuda")
-            && !cuda_dlls_present(&rt)
-        {
-            log::warn!("[builtin_llm] CUDA server found but cublas DLLs missing in {}, attempting cudart download", rt.display());
-            let cv = cuda_version;
-            let cudart_zip = if cv == "13.1" { "cudart-llama-bin-win-cuda-13.1-x64.zip" } else { "cudart-llama-bin-win-cuda-12.4-x64.zip" };
-            // Try bundled cudart first
-            let mut found = false;
-            if let Ok(rd) = app.path().resource_dir() {
-                for z in [rd.join("llm").join("runtime").join(cudart_zip), rd.join("resources").join("llm").join("runtime").join(cudart_zip)] {
-                    if z.exists() {
-                        if let Err(e) = safe_archive_extract_with_progress(&z, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime") {
-                            log::warn!("[builtin_llm] Failed to extract bundled cudart: {}", e);
-                        } else { found = true; }
-                        break;
-                    }
-                }
-            }
-            // Download if still missing
-            if !found && !cuda_dlls_present(&rt) {
-                let base_urls = default_runtime_base_urls();
-                let urls: Vec<String> = base_urls.iter().map(|b| format!("{}/{}", b, cudart_zip)).collect();
-                let refs: Vec<&str> = if let Some(c) = custom_cudart_url.filter(|s| !s.is_empty()) { vec![c] } else { urls.iter().map(|s| s.as_str()).collect() };
-                let cp = rt.join(cudart_zip);
-                match download_to_file(app, progress_ch, &refs, &cp, "Downloading CUDA runtime (cublas)", cancel).await {
-                    Ok(_) => {
-                        if let Err(e) = safe_archive_extract_with_progress(&cp, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime") {
-                            log::warn!("[builtin_llm] Failed to extract cudart: {}", e);
+        // On bundled-only systems (old glibc), validate the existing binary is usable.
+        // A previously downloaded official runtime may require GLIBC_2.34+.
+        // If invalid, wipe the directory and fall through to bundled extraction below.
+        if is_bundled_runtime_only() && !validate_runtime_binary(&server) {
+            log::warn!(
+                "[builtin_llm] Existing runtime at {} is incompatible with this system, removing and re-extracting bundled runtime",
+                rt.display()
+            );
+            let _ = std::fs::remove_dir_all(&rt);
+            // Do NOT return — fall through to bundled extraction.
+        } else {
+            // For CUDA on Windows, also verify that cudart DLLs (cublas) are present.
+            // If missing, attempt to download cudart only (not the full runtime).
+            #[cfg(target_os = "windows")]
+            if (compute_mode == "gpu" || compute_mode == "hybrid")
+                && gpu_backend.eq_ignore_ascii_case("cuda")
+                && !cuda_dlls_present(&rt)
+            {
+                log::warn!("[builtin_llm] CUDA server found but cublas DLLs missing in {}, attempting cudart download", rt.display());
+                let cv = cuda_version;
+                let cudart_zip = if cv == "13.1" { "cudart-llama-bin-win-cuda-13.1-x64.zip" } else { "cudart-llama-bin-win-cuda-12.4-x64.zip" };
+                // Try bundled cudart first
+                let mut found = false;
+                if let Ok(rd) = app.path().resource_dir() {
+                    for z in [rd.join("llm").join("runtime").join(cudart_zip), rd.join("resources").join("llm").join("runtime").join(cudart_zip)] {
+                        if z.exists() {
+                            if let Err(e) = safe_archive_extract_with_progress(&z, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime") {
+                                log::warn!("[builtin_llm] Failed to extract bundled cudart: {}", e);
+                            } else { found = true; }
+                            break;
                         }
-                        let _ = std::fs::remove_file(&cp);
                     }
-                    Err(e) => log::warn!("[builtin_llm] Failed to download cudart: {} (CUDA may fall back to CPU)", e),
+                }
+                // Download if still missing
+                if !found && !cuda_dlls_present(&rt) {
+                    let base_urls = default_runtime_base_urls();
+                    let urls: Vec<String> = base_urls.iter().map(|b| format!("{}/{}", b, cudart_zip)).collect();
+                    let refs: Vec<&str> = if let Some(c) = custom_cudart_url.filter(|s| !s.is_empty()) { vec![c] } else { urls.iter().map(|s| s.as_str()).collect() };
+                    let cp = rt.join(cudart_zip);
+                    match download_to_file(app, progress_ch, &refs, &cp, "Downloading CUDA runtime (cublas)", cancel).await {
+                        Ok(_) => {
+                            if let Err(e) = safe_archive_extract_with_progress(&cp, &rt, Some(app), Some(progress_ch), "Extracting CUDA runtime") {
+                                log::warn!("[builtin_llm] Failed to extract cudart: {}", e);
+                            }
+                            let _ = std::fs::remove_file(&cp);
+                        }
+                        Err(e) => log::warn!("[builtin_llm] Failed to download cudart: {} (CUDA may fall back to CPU)", e),
+                    }
                 }
             }
+            return Ok(server);
         }
-        return Ok(server);
     }
 
     // Only create dir when we actually need to download/install

@@ -7,6 +7,10 @@ import "./index.css";
 
 // Polyfill: Promise.withResolvers (ES2024) — needed for pdfjs-dist on
 // older JS engines such as WebKitGTK 2.42's JavaScriptCore.
+// Also record whether the native API existed BEFORE polyfilling, so
+// PDFReader can decide whether to use a Web Worker (workers don't get
+// our polyfill, so we must fall back to main-thread parsing there).
+(window as any).__nativePromiseWithResolvers = typeof Promise.withResolvers !== "undefined";
 if (typeof Promise.withResolvers === "undefined") {
   Promise.withResolvers = function <T>() {
     let resolve: (value: T | PromiseLike<T>) => void;
