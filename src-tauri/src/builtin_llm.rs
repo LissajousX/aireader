@@ -3035,6 +3035,96 @@ mod tests {
 
     // ── find_llama_server ──
 
+    // ── prepend_runtime_to_ld_path (Linux) / prepend_runtime_to_path (Windows) ──
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_prepend_runtime_to_ld_path_basic() {
+        let exe = Path::new("/opt/runtime/llama-b7966/llama-server");
+        let rt = Path::new("/opt/runtime");
+        let result = prepend_runtime_to_ld_path(exe, rt);
+        let s = result.to_string_lossy();
+        // Must start with exe parent dir
+        assert!(s.starts_with("/opt/runtime/llama-b7966:"), "Expected exe parent first, got: {s}");
+        // Must contain runtime dir
+        assert!(s.contains("/opt/runtime"), "Expected runtime dir in path, got: {s}");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_prepend_runtime_to_ld_path_preserves_existing() {
+        // Temporarily set LD_LIBRARY_PATH to test preservation
+        let exe = Path::new("/rt/bin/llama-bench");
+        let rt = Path::new("/rt");
+        std::env::set_var("LD_LIBRARY_PATH", "/usr/local/lib");
+        let result = prepend_runtime_to_ld_path(exe, rt);
+        let s = result.to_string_lossy();
+        assert!(s.ends_with(":/usr/local/lib") || s.contains(":/usr/local/lib:"),
+            "Existing LD_LIBRARY_PATH must be preserved, got: {s}");
+        std::env::remove_var("LD_LIBRARY_PATH");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_prepend_runtime_to_ld_path_no_duplicate_colon() {
+        let exe = Path::new("/rt/bin/llama-bench");
+        let rt = Path::new("/rt");
+        std::env::remove_var("LD_LIBRARY_PATH");
+        let result = prepend_runtime_to_ld_path(exe, rt);
+        let s = result.to_string_lossy();
+        assert!(!s.contains("::"), "Must not have empty path segments (::), got: {s}");
+        assert!(!s.ends_with(':'), "Must not end with colon, got: {s}");
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_prepend_runtime_to_path_basic() {
+        let exe = Path::new("C:\\runtime\\llama-b7966\\llama-server.exe");
+        let rt = Path::new("C:\\runtime");
+        let result = prepend_runtime_to_path(exe, rt);
+        let s = result.to_string_lossy();
+        assert!(s.contains("C:\\runtime\\llama-b7966"), "Expected exe parent in PATH");
+        assert!(s.contains("C:\\runtime"), "Expected runtime dir in PATH");
+    }
+
+    // ── validate_runtime_binary ──
+
+    #[test]
+    fn test_validate_runtime_binary_nonexistent() {
+        // A nonexistent binary should return false (cannot execute)
+        let fake = Path::new("/nonexistent/binary/llama-server");
+        #[cfg(target_os = "linux")]
+        assert!(!validate_runtime_binary(fake));
+        #[cfg(not(target_os = "linux"))]
+        assert!(validate_runtime_binary(fake)); // non-Linux always returns true
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_validate_runtime_binary_valid_system_binary() {
+        // /bin/true is a valid binary on any Linux system
+        let bin_true = Path::new("/bin/true");
+        if bin_true.exists() {
+            assert!(validate_runtime_binary(bin_true));
+        }
+    }
+
+    // ── is_bundled_runtime_only cross-platform ──
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_bundled_only_always_false_on_windows() {
+        assert!(!is_bundled_runtime_only());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_bundled_only_always_false_on_macos() {
+        assert!(!is_bundled_runtime_only());
+    }
+
+    // ── find_llama_server ──
+
     #[test]
     fn test_find_llama_server_empty_dir() {
         let tmp = std::env::temp_dir().join("test_find_llama_empty");

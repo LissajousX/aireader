@@ -58,7 +58,7 @@
 | **macOS arm64** | Metal (CPU+GPU unified memory) | `.dmg` |
 | **macOS x64** | CPU | `.dmg` |
 | **Ubuntu 22.04+ x64** | Vulkan · CPU | `.deb` / `.AppImage` |
-| **Ubuntu 20.04+ x64** | Vulkan · CPU | `.AppImage` (focal build, **upcoming**) |
+| **Ubuntu 20.04 x64** | Vulkan · CPU | `.AppImage` (dedicated focal build) |
 
 ## 🚀 Quick Start
 

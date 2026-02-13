@@ -1,6 +1,6 @@
 # AiReader User Guide
 
-**Version 1.0.0** · PDF · EPUB · Markdown · TXT
+**Version 1.1.0** · PDF · EPUB · Markdown · TXT
 
 ---
 
@@ -225,7 +225,7 @@ All models Q4_K_M quantization. Integrated GPUs auto fall back to CPU.
 The system auto-probes the fastest mirror (ModelScope in China / HuggingFace overseas). If still slow, click **Link** in advanced mode → download with another tool → click **Import**.
 
 **Q: Which platforms and GPUs are supported?**
-Windows x64, macOS (arm64/x64), Ubuntu x64. GPU: NVIDIA (CUDA 12.4/13.1), AMD/Intel (Vulkan), Apple Silicon (Metal), CPU mode (all computers).
+Windows x64, macOS (arm64/x64), Ubuntu 22.04+ x64, Ubuntu 20.04 x64 (dedicated focal build). GPU: NVIDIA (CUDA 12.4/13.1), AMD/Intel (Vulkan), Apple Silicon (Metal), CPU mode (all computers).
 
 **Q: Why doesn't my integrated GPU use GPU acceleration?**
 Integrated GPUs typically have < 2GB VRAM. GPU mode is slower than CPU. The system auto-detects and falls back.
@@ -235,6 +235,12 @@ Use "Downgrade to smaller model" in Simple Mode, or select manually in Advanced 
 
 **Q: How to update?**
 Download and run the new installer. Automatic overwrite, data preserved.
+
+**Q: Is there a dedicated version for Ubuntu 20.04?**
+Yes. Starting from v1.1.0, a dedicated focal AppImage is available with self-compiled llama.cpp runtime that doesn't require newer glibc. Download the AppImage with `focal` in the filename.
+
+**Q: Is built-in AI configuration required?**
+No. Built-in AI is provided for convenience so new users can get started immediately. If you already have an Ollama service or OpenAI-compatible API, you can skip the built-in AI setup in the wizard or settings page and use your external AI service directly.
 
 ---
 

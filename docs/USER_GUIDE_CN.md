@@ -1,6 +1,6 @@
 # AiReader 用户指南
 
-**版本 1.0.0** · PDF · EPUB · Markdown · TXT
+**版本 1.1.0** · PDF · EPUB · Markdown · TXT
 
 ---
 
@@ -225,7 +225,7 @@ PDF 和 EPUB 支持目录侧栏，两种打开方式：
 系统会自动探测最快的镜像源（国内 ModelScope / 海外 HuggingFace）。如果仍然慢，可在高级模式中点击 **链接** 复制下载地址，用其他下载工具下载后点击 **导入** 导入。
 
 **Q: 支持哪些平台和 GPU？**
-Windows x64、macOS (arm64/x64)、Ubuntu x64。GPU 加速：NVIDIA (CUDA 12.4/13.1)、AMD/Intel (Vulkan)、Apple Silicon (Metal)、CPU 模式（所有电脑可用）。
+Windows x64、macOS (arm64/x64)、Ubuntu 22.04+ x64、Ubuntu 20.04 x64（focal 专用构建）。GPU 加速：NVIDIA (CUDA 12.4/13.1)、AMD/Intel (Vulkan)、Apple Silicon (Metal)、CPU 模式（所有电脑可用）。
 
 **Q: 集成显卡为什么不用 GPU 加速？**
 集成显卡显存通常 < 2GB，实测比纯 CPU 更慢。系统会自动检测并回退到 CPU 模式。
@@ -235,6 +235,12 @@ Windows x64、macOS (arm64/x64)、Ubuntu x64。GPU 加速：NVIDIA (CUDA 12.4/13
 
 **Q: 如何更新？**
 下载新版安装包直接运行即可，自动覆盖旧版本。文档、笔记、模型和设置均会保留。
+
+**Q: Ubuntu 20.04 有专用版本吗？**
+有。v1.1.0 起提供 focal 专用 AppImage，内含自编译的 llama.cpp 运行时，无需高版本 glibc。请下载文件名带 `focal` 的 AppImage。
+
+**Q: 内置 AI 是必须配置的吗？**
+不是。内置 AI 是为了方便新手用户开箱即用。如果你已有 Ollama 服务或 OpenAI 兼容 API，可以在引导向导或设置页跳过内置 AI 配置，直接使用外部 AI 服务。
 
 ---
 
