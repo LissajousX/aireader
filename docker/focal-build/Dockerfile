@@ -3,7 +3,7 @@
 #
 # Why: Tauri v2 requires libwebkit2gtk-4.1 which depends on libsoup3.
 #       Ubuntu 20.04 only ships webkit2gtk-4.0 + libsoup2.4.
-#       This image builds libsoup3 + WebKitGTK 2.36 from source so the
+#       This image builds GLib 2.72 + libsoup3 + WebKitGTK 2.40 from source so the
 #       resulting Tauri binaries link against glibc 2.31 (focal's glibc),
 #       making them compatible with Ubuntu 20.04+.
 #
@@ -19,7 +19,8 @@ FROM ubuntu:20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
-ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig
+# Include /usr/local/lib/x86_64-linux-gnu/pkgconfig so webkit2gtk-4.1.pc from source installs is found
+ENV PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig
 
 # ---------------------------------------------------------------------------
 # 1. System packages available in focal repos
@@ -54,8 +55,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg lsb-release \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip & install meson (focal's meson is too old for libsoup3)
-RUN pip3 install --upgrade pip && pip3 install meson
+# Upgrade pip & install meson + cmake
+# focal's meson is too old for libsoup3; focal's cmake 3.16 is too old for WebKitGTK 2.40 (needs 3.20+)
+RUN pip3 install --upgrade pip && pip3 install meson cmake
 
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
@@ -105,11 +107,11 @@ RUN cd /tmp && \
     rm -rf /tmp/libsoup-*
 
 # ---------------------------------------------------------------------------
-# 4. Build WebKitGTK 2.36.8 from source (minimal, GTK port, 4.1 API only)
-#    2.36 is the first version with the webkit2gtk-4.1 pkg-config name.
+# 4. Build WebKitGTK 2.40.5 from source (minimal, GTK port, 4.1 API only)
+#    webkit2gtk-sys v2.0.2 (used by Tauri/wry) requires >= 2.40.
 #    We disable as much as possible to speed up compilation.
 # ---------------------------------------------------------------------------
-ARG WEBKIT_VERSION=2.38.5
+ARG WEBKIT_VERSION=2.40.5
 RUN cd /tmp && \
     wget -q https://webkitgtk.org/releases/webkitgtk-${WEBKIT_VERSION}.tar.xz && \
     tar xf webkitgtk-${WEBKIT_VERSION}.tar.xz && \
