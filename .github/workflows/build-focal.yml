@@ -59,11 +59,32 @@ jobs:
       - name: Build Tauri app
         run: npx tauri build --target x86_64-unknown-linux-gnu --bundles appimage
 
+      - name: Inject GCC 11 libstdc++ into AppImage
+        shell: bash
+        run: |
+          cd src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage
+          APPIMAGE=$(ls *.AppImage)
+          chmod +x "$APPIMAGE"
+
+          # Extract the AppImage
+          ./"$APPIMAGE" --appimage-extract
+
+          # Copy GCC 11's libstdc++ into the AppDir (focal's system copy is too old)
+          cp /usr/lib/x86_64-linux-gnu/libstdc++.so.6 squashfs-root/usr/lib/
+
+          # Download appimagetool and repack
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          rm "$APPIMAGE"
+          ./appimagetool-x86_64.AppImage squashfs-root "$APPIMAGE"
+          rm -rf squashfs-root appimagetool-x86_64.AppImage
+
       - name: Rename AppImage (mark as focal-compatible)
         shell: bash
         run: |
           cd src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage
           for f in *.AppImage; do
+            [[ "$f" == *-ubuntu2004.AppImage ]] && continue
             mv "$f" "${f%.AppImage}-ubuntu2004.AppImage"
           done
           ls -lh *.AppImage
