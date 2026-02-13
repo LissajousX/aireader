@@ -28,7 +28,7 @@ ENV PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkg
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Essential build tools
     build-essential pkg-config git curl wget ca-certificates \
-    python3 python3-pip ninja-build \
+    python3 python3-pip ninja-build software-properties-common \
     # GLib build deps
     libffi-dev libpcre2-dev libmount-dev gettext \
     # Tauri / GTK runtime & dev deps
@@ -36,8 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libappindicator3-dev librsvg2-dev patchelf \
     # WebKitGTK build deps
     libicu-dev libxml2-dev libxslt1-dev libsqlite3-dev \
-    libgcrypt20-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-    libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+    libgcrypt20-dev \
     libnghttp2-dev libpsl-dev liblcms2-dev \
     libenchant-dev libsecret-1-dev libnotify-dev libhyphen-dev \
     libopenjp2-7-dev libwoff-dev libtasn1-6-dev \
@@ -52,7 +51,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ruby-dev libmanette-0.2-dev unifdef gperf \
     # Needed for Node.js install
     gnupg lsb-release \
+    # OpenSSL (needed by rust openssl-sys crate)
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# 1b. Install GCC 11 from ubuntu-toolchain-r PPA
+#     focal's GCC 9 cannot compile WebKitGTK 2.40 (C++20 defaulted operator==)
+# ---------------------------------------------------------------------------
+RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test && \
+    apt-get update && \
+    apt-get install -y gcc-11 g++-11 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 110 \
+                        --slave /usr/bin/g++ g++ /usr/bin/g++-11 && \
+    update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-11 110 && \
+    update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-11 110 && \
+    rm -rf /var/lib/apt/lists/* && \
+    echo "gcc: $(gcc --version | head -1)"
 
 # focal's meson is too old for GLib 2.72 / libsoup3;
 # focal's cmake 3.16 is too old for WebKitGTK 2.40 (needs >= 3.20)
@@ -102,7 +117,6 @@ RUN cd /tmp && \
         -Dsysprof=disabled \
         -Dintrospection=disabled \
         -Dvapi=disabled \
-        -Ddocs=disabled \
         -Dntlm=disabled \
         -Dbrotli=disabled \
         -Dgssapi=disabled && \
@@ -113,11 +127,14 @@ RUN cd /tmp && \
     rm -rf /tmp/libsoup-*
 
 # ---------------------------------------------------------------------------
-# 4. Build WebKitGTK 2.40.5 from source (GTK port, 4.1 API only)
-#    webkit2gtk-sys v2.0.2 (used by Tauri 2.x / wry) requires >= 2.40.
-#    We disable optional features aggressively to speed up compilation.
+# 4. Build WebKitGTK 2.42.5 from source (GTK port, 4.1 API only)
+#    wry 0.54.1 (used by Tauri 2.x) requires >= 2.42 for
+#    webkit_cookie_manager_get_all_cookies API.
+#    Built with GCC 11 to avoid C++20 issues; GStreamer disabled (focal's
+#    1.16 lacks GST_TIMEP_FORMAT macro required by 2.42, and Tauri doesn't
+#    need media playback).
 # ---------------------------------------------------------------------------
-ARG WEBKIT_VERSION=2.40.5
+ARG WEBKIT_VERSION=2.42.5
 RUN cd /tmp && \
     wget -q https://webkitgtk.org/releases/webkitgtk-${WEBKIT_VERSION}.tar.xz && \
     tar xf webkitgtk-${WEBKIT_VERSION}.tar.xz && \
@@ -125,6 +142,8 @@ RUN cd /tmp && \
     cmake -B _build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_C_COMPILER=/usr/bin/gcc-11 \
+        -DCMAKE_CXX_COMPILER=/usr/bin/g++-11 \
         -DPORT=GTK \
         -DUSE_SOUP2=OFF \
         -DUSE_GTK4=OFF \
@@ -132,6 +151,7 @@ RUN cd /tmp && \
         -DUSE_AVIF=OFF \
         -DUSE_JPEGXL=OFF \
         -DUSE_SYSTEM_MALLOC=ON \
+        -DUSE_GSTREAMER=OFF \
         -DENABLE_BUBBLEWRAP_SANDBOX=OFF \
         -DENABLE_DOCUMENTATION=OFF \
         -DENABLE_MINIBROWSER=OFF \
@@ -139,19 +159,21 @@ RUN cd /tmp && \
         -DENABLE_SPELLCHECK=OFF \
         -DENABLE_INTROSPECTION=OFF \
         -DENABLE_GEOLOCATION=OFF \
+        -DENABLE_VIDEO=OFF \
         -DENABLE_WEB_AUDIO=OFF \
         -DENABLE_MEDIA_SOURCE=OFF \
         -DUSE_SYSTEMD=OFF \
         -DENABLE_JOURNALD_LOG=OFF \
+        -DENABLE_WAYLAND_TARGET=OFF \
         -DCMAKE_C_FLAGS="-w" \
         -DCMAKE_CXX_FLAGS="-w" && \
-    ninja -C _build -j$(( $(nproc) > 4 ? 4 : $(nproc) )) && \
+    ninja -C _build -j$(nproc) && \
     ninja -C _build install && \
     ldconfig && \
     rm -rf /tmp/webkitgtk-*
 
-# Verify webkit2gtk-4.1 >= 2.40 (the exact version required by webkit2gtk-sys)
-RUN pkg-config --print-errors 'webkit2gtk-4.1 >= 2.40' && \
+# Verify webkit2gtk-4.1 >= 2.42 (wry 0.54.1 requires get_all_cookies from 2.42+)
+RUN pkg-config --print-errors 'webkit2gtk-4.1 >= 2.42' && \
     echo "webkit2gtk-4.1: $(pkg-config --modversion webkit2gtk-4.1)" && \
     echo "javascriptcoregtk-4.1: $(pkg-config --modversion javascriptcoregtk-4.1)"
 
