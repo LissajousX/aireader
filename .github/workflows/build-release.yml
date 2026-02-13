@@ -1,3 +1,16 @@
+# =============================================================================
+# Release Orchestrator
+#
+# Calls all platform-specific build workflows in parallel.
+# Each platform workflow can also be triggered independently via workflow_dispatch
+# for debugging purposes.
+#
+# Workflows called:
+#   build-windows.yml  → Windows NSIS installer
+#   build-macos.yml    → macOS DMG (ARM + x64)
+#   build-linux.yml    → Ubuntu 22.04+ AppImage + deb
+#   build-focal.yml    → Ubuntu 20.04+ AppImage (Docker-based)
+# =============================================================================
 name: Build & Release
 
 on:
@@ -9,196 +22,19 @@ permissions:
   contents: write
   packages: read
 
-env:
-  CARGO_INCREMENTAL: 0
-
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bundle: nsis
-            artifact_pattern: "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe"
-          # macOS ARM (native build on Apple Silicon runner)
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            bundle: dmg
-            artifact_pattern: "src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg"
-          # macOS x86_64 (cross-compile on ARM runner — macos-13 Intel retired)
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            bundle: dmg
-            artifact_pattern: "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg"
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            bundle: "appimage,deb"
-            artifact_pattern: |
-              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
-              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+  windows:
+    uses: ./.github/workflows/build-windows.yml
+    secrets: inherit
 
-    runs-on: ${{ matrix.os }}
+  macos:
+    uses: ./.github/workflows/build-macos.yml
+    secrets: inherit
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+  linux:
+    uses: ./.github/workflows/build-linux.yml
+    secrets: inherit
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      # macOS: install create-dmg for DMG bundling
-      - name: Install macOS dependencies
-        if: runner.os == 'macOS'
-        run: brew install create-dmg
-
-      # Linux: install system dependencies for Tauri
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      # Inject version from git tag (e.g. v1.1.0 → 1.1.0) into tauri.conf.json
-      - name: Inject version from tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Injecting version: $VERSION"
-          cd src-tauri
-          if command -v python3 &>/dev/null; then
-            python3 -c "
-          import json, sys
-          with open('tauri.conf.json', 'r') as f: c = json.load(f)
-          c['version'] = '$VERSION'
-          with open('tauri.conf.json', 'w') as f: json.dump(c, f, indent=2, ensure_ascii=False)
-          print(f'Updated tauri.conf.json version to {c[\"version\"]}')"
-          else
-            sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" tauri.conf.json
-          fi
-          grep '"version"' tauri.conf.json
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      # macOS: self-check Apple certificate before signing
-      - name: Verify Apple certificate (macOS)
-        if: runner.os == 'macOS'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          set -e
-          CERT_PATH=/tmp/apple-cert.p12
-          echo "Decoding APPLE_CERTIFICATE to $CERT_PATH"
-          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
-          echo "SHA256 (for debugging length only):"
-          shasum -a 256 "$CERT_PATH"
-          echo "Running openssl pkcs12 -info (no keys) to verify password..."
-          openssl pkcs12 -info -in "$CERT_PATH" -nokeys -passin env:APPLE_CERTIFICATE_PASSWORD >/tmp/p12-info.txt
-          head -20 /tmp/p12-info.txt
-
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Aireader ${{ github.ref_name }}"
-          releaseBody: "See [release notes](https://github.com/${{ github.repository }}/blob/main/docs/releases/${{ github.ref_name }}-release-notes.md) for details."
-          releaseDraft: true
-          prerelease: false
-          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: aireader-${{ matrix.target }}
-          path: ${{ matrix.artifact_pattern }}
-          if-no-files-found: error
-
-  # ---------------------------------------------------------------------------
-  # Ubuntu 20.04 (Focal) compatible build via Docker container
-  # Requires the focal build image to be pre-built via build-focal-image.yml
-  # Produces AppImage linked against glibc 2.31 (compatible with Ubuntu 20.04+)
-  # ---------------------------------------------------------------------------
-  build-focal:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/lissajousx/aireader-focal-build:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    env:
-      PKG_CONFIG_PATH: /usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Inject version from tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Injecting version: $VERSION"
-          cd src-tauri
-          python3 -c "
-          import json
-          with open('tauri.conf.json', 'r') as f: c = json.load(f)
-          c['version'] = '$VERSION'
-          with open('tauri.conf.json', 'w') as f: json.dump(c, f, indent=2, ensure_ascii=False)
-          print(f'Updated tauri.conf.json version to {c[\"version\"]}')"
-          grep '"version"' tauri.conf.json
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Build Tauri app
-        env:
-          CARGO_INCREMENTAL: "0"
-        run: npx tauri build --target x86_64-unknown-linux-gnu --bundles appimage
-
-      - name: Rename AppImage (mark as focal-compatible)
-        shell: bash
-        run: |
-          cd src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage
-          for f in *.AppImage; do
-            mv "$f" "${f%.AppImage}-ubuntu2004.AppImage"
-          done
-          ls -lh *.AppImage
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: aireader-x86_64-linux-focal
-          path: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
-          if-no-files-found: error
-
-      - name: Upload to release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          files: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+  focal:
+    uses: ./.github/workflows/build-focal.yml
+    secrets: inherit

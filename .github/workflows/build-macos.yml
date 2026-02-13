@@ -1,0 +1,103 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS ARM (native build on Apple Silicon runner)
+          - target: aarch64-apple-darwin
+            arch: arm64
+          # macOS x86_64 (cross-compile on ARM runner — macos-13 Intel retired)
+          - target: x86_64-apple-darwin
+            arch: x64
+
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install macOS dependencies
+        run: brew install create-dmg
+
+      - name: Inject version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Injecting version: $VERSION"
+          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+          rm -f src-tauri/tauri.conf.json.bak
+          grep '"version"' src-tauri/tauri.conf.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Verify Apple certificate
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -e
+          CERT_PATH=/tmp/apple-cert.p12
+          echo "Decoding APPLE_CERTIFICATE to $CERT_PATH"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          echo "SHA256 (for debugging length only):"
+          shasum -a 256 "$CERT_PATH"
+          echo "Running openssl pkcs12 -info (no keys) to verify password..."
+          openssl pkcs12 -info -in "$CERT_PATH" -nokeys -passin env:APPLE_CERTIFICATE_PASSWORD >/tmp/p12-info.txt
+          head -20 /tmp/p12-info.txt
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          releaseName: "Aireader ${{ github.ref_name }}"
+          releaseBody: "See [release notes](https://github.com/${{ github.repository }}/blob/main/docs/releases/${{ github.ref_name }}-release-notes.md) for details."
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }} --bundles dmg
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aireader-${{ matrix.target }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          if-no-files-found: error

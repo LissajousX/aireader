@@ -1,43 +1,34 @@
-name: Build Focal AppImage
+name: Build Linux (Focal)
 
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: write
+  packages: read
 
 env:
   CARGO_INCREMENTAL: 0
 
 jobs:
-  build-focal:
+  build:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/lissajousx/aireader-focal-build:latest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-    env:
-      PKG_CONFIG_PATH: /usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Debug pkg-config for JavaScriptCore
+      - name: Verify build environment
         shell: bash
         run: |
-          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
-          find /usr -name 'javascriptcoregtk-*.pc' -o -name 'webkit2gtk-*.pc' || true
-          pkg-config --list-all | grep -E 'javascriptcoregtk|webkit2gtk' || true
-          echo "--- pc file content ---"
-          cat /usr/lib/x86_64-linux-gnu/pkgconfig/javascriptcoregtk-4.1.pc || true
-          echo "--- pkg-config requires ---"
-          pkg-config --print-requires javascriptcoregtk-4.1 || true
-          echo "--- pkg-config cflags/libs (with debug) ---"
-          PKG_CONFIG_DEBUG_SPEW=1 pkg-config --cflags --libs javascriptcoregtk-4.1 || true
+          echo "webkit2gtk-4.1: $(pkg-config --modversion webkit2gtk-4.1)"
+          echo "glibc: $(ldd --version | head -1)"
 
       - name: Inject version from tag
         if: startsWith(github.ref, 'refs/tags/v')
@@ -45,21 +36,13 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           echo "Injecting version: $VERSION"
-          cd src-tauri
-          python3 -c "
-          import json
-          with open('tauri.conf.json', 'r') as f: c = json.load(f)
-          c['version'] = '$VERSION'
-          with open('tauri.conf.json', 'w') as f: json.dump(c, f, indent=2, ensure_ascii=False)
-          print(f'Updated tauri.conf.json version to {c["version"]}')"
-          grep '"version"' tauri.conf.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+          grep '"version"' src-tauri/tauri.conf.json
 
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build Tauri app (AppImage for focal)
-        env:
-          CARGO_INCREMENTAL: "0"
+      - name: Build Tauri app
         run: npx tauri build --target x86_64-unknown-linux-gnu --bundles appimage
 
       - name: Rename AppImage (mark as focal-compatible)

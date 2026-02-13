@@ -3,14 +3,14 @@
 #
 # Why: Tauri v2 requires libwebkit2gtk-4.1 which depends on libsoup3.
 #       Ubuntu 20.04 only ships webkit2gtk-4.0 + libsoup2.4.
-#       This image builds GLib 2.72 + libsoup3 + WebKitGTK 2.40 from source so the
-#       resulting Tauri binaries link against glibc 2.31 (focal's glibc),
+#       This image builds GLib 2.72 + libsoup3 + WebKitGTK 2.40 from source
+#       so the resulting Tauri binaries link against glibc 2.31 (focal's glibc),
 #       making them compatible with Ubuntu 20.04+.
 #
-# Build:  docker build -t ghcr.io/<owner>/aireader-focal-build:latest .
-# Push:   docker push ghcr.io/<owner>/aireader-focal-build:latest
+# Dependency chain built from source:
+#       GLib 2.72.4 → libsoup 3.0.8 → WebKitGTK 2.40.5
 #
-# NOTE: WebKitGTK compilation is VERY heavy (~30-60 min, ~8 GB RAM).
+# NOTE: WebKitGTK compilation is VERY heavy (~60-120 min, ~8 GB RAM).
 #       Build this image on a machine with ≥16 GB RAM and ≥4 cores.
 #       Once built, push to registry and reuse in CI.
 # =============================================================================
@@ -19,49 +19,51 @@ FROM ubuntu:20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
-# Include /usr/local/lib/x86_64-linux-gnu/pkgconfig so webkit2gtk-4.1.pc from source installs is found
+# Ensure pkg-config finds .pc files from both system and source-built libraries
 ENV PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig
 
 # ---------------------------------------------------------------------------
-# 1. System packages available in focal repos
+# 1. System packages from focal repos
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Essential build tools
-    build-essential cmake ninja-build pkg-config git curl wget ca-certificates \
-    python3 python3-pip \
+    build-essential pkg-config git curl wget ca-certificates \
+    python3 python3-pip ninja-build \
+    # GLib build deps
+    libffi-dev libpcre2-dev libmount-dev gettext \
     # Tauri / GTK runtime & dev deps
     libgtk-3-dev libgdk-pixbuf2.0-dev libglib2.0-dev \
     libappindicator3-dev librsvg2-dev patchelf \
-    libffi-dev libpcre2-dev libmount-dev gettext \
-    # WebKitGTK build deps (available in focal)
+    # WebKitGTK build deps
     libicu-dev libxml2-dev libxslt1-dev libsqlite3-dev \
     libgcrypt20-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
     libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-    libnghttp2-dev \
-    libpsl-dev \
-    liblcms2-dev \
+    libnghttp2-dev libpsl-dev liblcms2-dev \
     libenchant-dev libsecret-1-dev libnotify-dev libhyphen-dev \
     libopenjp2-7-dev libwoff-dev libtasn1-6-dev \
     libxt-dev libx11-dev libxcomposite-dev libxdamage-dev \
     libwayland-dev libwayland-client0 libwayland-server0 \
     libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev \
+    libgbm-dev libdrm-dev \
     libatk1.0-dev libatk-bridge2.0-dev libepoxy-dev \
     libharfbuzz-dev libcairo2-dev libpango1.0-dev \
-    libjpeg-dev libpng-dev libwebp-dev libxslt1-dev \
+    libjpeg-dev libpng-dev libwebp-dev \
     gobject-introspection libgirepository1.0-dev \
-    ruby-dev libmanette-0.2-dev libwpe-1.0-dev libwpebackend-fdo-1.0-dev \
-    unifdef gperf \
+    ruby-dev libmanette-0.2-dev unifdef gperf \
     # Needed for Node.js install
     gnupg lsb-release \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip & install meson + cmake
-# focal's meson is too old for libsoup3; focal's cmake 3.16 is too old for WebKitGTK 2.40 (needs 3.20+)
+# focal's meson is too old for GLib 2.72 / libsoup3;
+# focal's cmake 3.16 is too old for WebKitGTK 2.40 (needs >= 3.20)
 RUN pip3 install --upgrade pip && pip3 install meson cmake
 
+# Verify pip-installed cmake (>= 3.20) takes precedence over system cmake
+RUN cmake --version
+
 # ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# 2. Build GLib (>=2.69 required by libsoup3)
+# 2. Build GLib 2.72.4 from source
+#    (focal ships 2.64; libsoup 3.x needs >= 2.69; WebKitGTK 2.40 needs >= 2.70)
 # ---------------------------------------------------------------------------
 ARG GLIB_VERSION=2.72.4
 RUN cd /tmp && \
@@ -76,10 +78,12 @@ RUN cd /tmp && \
         -Dselinux=disabled \
         -Dsystemtap=false \
         -Dxattr=false \
+        -Dlibelf=disabled \
         -Dlibmount=enabled && \
     ninja -C _build -j$(nproc) && \
     ninja -C _build install && \
     ldconfig && \
+    echo "GLib installed: $(pkg-config --modversion glib-2.0)" && \
     rm -rf /tmp/glib-*
 
 # ---------------------------------------------------------------------------
@@ -98,18 +102,20 @@ RUN cd /tmp && \
         -Dsysprof=disabled \
         -Dintrospection=disabled \
         -Dvapi=disabled \
+        -Ddocs=disabled \
         -Dntlm=disabled \
         -Dbrotli=disabled \
         -Dgssapi=disabled && \
     ninja -C _build -j$(nproc) && \
     ninja -C _build install && \
     ldconfig && \
+    echo "libsoup installed: $(pkg-config --modversion libsoup-3.0)" && \
     rm -rf /tmp/libsoup-*
 
 # ---------------------------------------------------------------------------
-# 4. Build WebKitGTK 2.40.5 from source (minimal, GTK port, 4.1 API only)
-#    webkit2gtk-sys v2.0.2 (used by Tauri/wry) requires >= 2.40.
-#    We disable as much as possible to speed up compilation.
+# 4. Build WebKitGTK 2.40.5 from source (GTK port, 4.1 API only)
+#    webkit2gtk-sys v2.0.2 (used by Tauri 2.x / wry) requires >= 2.40.
+#    We disable optional features aggressively to speed up compilation.
 # ---------------------------------------------------------------------------
 ARG WEBKIT_VERSION=2.40.5
 RUN cd /tmp && \
@@ -121,42 +127,43 @@ RUN cd /tmp && \
         -DCMAKE_INSTALL_PREFIX=/usr \
         -DPORT=GTK \
         -DUSE_SOUP2=OFF \
+        -DUSE_GTK4=OFF \
+        -DUSE_WPE_RENDERER=OFF \
+        -DUSE_AVIF=OFF \
+        -DUSE_JPEGXL=OFF \
+        -DUSE_SYSTEM_MALLOC=ON \
         -DENABLE_BUBBLEWRAP_SANDBOX=OFF \
         -DENABLE_DOCUMENTATION=OFF \
         -DENABLE_MINIBROWSER=OFF \
         -DENABLE_GAMEPAD=OFF \
         -DENABLE_SPELLCHECK=OFF \
         -DENABLE_INTROSPECTION=OFF \
-        -DUSE_SYSTEMD=OFF \
-        -DENABLE_JOURNALD_LOG=OFF \
-        -DUSE_GTK4=OFF \
-        -DUSE_WPE_RENDERER=OFF \
         -DENABLE_GEOLOCATION=OFF \
         -DENABLE_WEB_AUDIO=OFF \
-        -DUSE_SYSTEM_MALLOC=ON \
+        -DENABLE_MEDIA_SOURCE=OFF \
+        -DUSE_SYSTEMD=OFF \
+        -DENABLE_JOURNALD_LOG=OFF \
         -DCMAKE_C_FLAGS="-w" \
         -DCMAKE_CXX_FLAGS="-w" && \
-    # Limit parallel jobs to avoid OOM on smaller machines
     ninja -C _build -j$(( $(nproc) > 4 ? 4 : $(nproc) )) && \
     ninja -C _build install && \
     ldconfig && \
-    pkg-config --modversion webkit2gtk-4.1 && \
-    pkg-config --modversion javascriptcoregtk-4.1 && \
-    pkg-config --variable pcfiledir javascriptcoregtk-4.1 && \
     rm -rf /tmp/webkitgtk-*
 
-# Verify webkit2gtk-4.1 is available
-RUN pkg-config --modversion webkit2gtk-4.1
+# Verify webkit2gtk-4.1 >= 2.40 (the exact version required by webkit2gtk-sys)
+RUN pkg-config --print-errors 'webkit2gtk-4.1 >= 2.40' && \
+    echo "webkit2gtk-4.1: $(pkg-config --modversion webkit2gtk-4.1)" && \
+    echo "javascriptcoregtk-4.1: $(pkg-config --modversion javascriptcoregtk-4.1)"
 
 # ---------------------------------------------------------------------------
-# 4. Node.js 20.x
+# 5. Node.js 20.x
 # ---------------------------------------------------------------------------
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# 5. Rust toolchain (stable)
+# 6. Rust toolchain (stable)
 # ---------------------------------------------------------------------------
 ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
@@ -166,17 +173,20 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
     rustup target add x86_64-unknown-linux-gnu
 
 # ---------------------------------------------------------------------------
-# 6. Final verification
+# 7. Final verification
 # ---------------------------------------------------------------------------
 RUN echo "=== Build Environment ===" && \
-    echo "glibc: $(ldd --version | head -1)" && \
-    echo "gcc:   $(gcc --version | head -1)" && \
-    echo "node:  $(node --version)" && \
-    echo "npm:   $(npm --version)" && \
-    echo "rustc: $(rustc --version)" && \
-    echo "cargo: $(cargo --version)" && \
-    echo "webkit2gtk-4.1: $(pkg-config --modversion webkit2gtk-4.1)" && \
-    echo "libsoup-3.0:    $(pkg-config --modversion libsoup-3.0)" && \
+    echo "glibc:              $(ldd --version | head -1)" && \
+    echo "gcc:                $(gcc --version | head -1)" && \
+    echo "cmake:              $(cmake --version | head -1)" && \
+    echo "node:               $(node --version)" && \
+    echo "npm:                $(npm --version)" && \
+    echo "rustc:              $(rustc --version)" && \
+    echo "cargo:              $(cargo --version)" && \
+    echo "glib-2.0:           $(pkg-config --modversion glib-2.0)" && \
+    echo "libsoup-3.0:        $(pkg-config --modversion libsoup-3.0)" && \
+    echo "webkit2gtk-4.1:     $(pkg-config --modversion webkit2gtk-4.1)" && \
+    echo "javascriptcoregtk:  $(pkg-config --modversion javascriptcoregtk-4.1)" && \
     echo "========================="
 
 WORKDIR /workspace
