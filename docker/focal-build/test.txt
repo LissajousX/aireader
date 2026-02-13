@@ -1,0 +1,3 @@
+cd docker/focal-build
+docker build -t ghcr.io/lissajousx/aireader-focal-build:latest .
+docker push ghcr.io/lissajousx/aireader-focal-build:latest
