@@ -26,6 +26,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Debug pkg-config for JavaScriptCore
+        shell: bash
+        run: |
+          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
+          find /usr -name 'javascriptcoregtk-*.pc' -o -name 'webkit2gtk-*.pc' || true
+          pkg-config --list-all | grep -E 'javascriptcoregtk|webkit2gtk' || true
+
       - name: Inject version from tag
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
