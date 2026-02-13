@@ -10,6 +10,7 @@ permissions:
 
 env:
   CARGO_INCREMENTAL: 0
+  APPIMAGE_EXTRACT_AND_RUN: 1
 
 jobs:
   build:
@@ -21,8 +22,16 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
 
       - name: Verify build environment
         shell: bash
