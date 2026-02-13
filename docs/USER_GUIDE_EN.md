@@ -8,6 +8,58 @@
 
 **AiReader** is a desktop AI assistant designed for deep reading. Supports PDF, EPUB, Markdown, and TXT formats. Core workflow: **select text → translate/explain → save as notes**. AI inference runs entirely on your local machine — your documents never leave your computer.
 
+## Download & Install
+
+### Download
+
+Go to [GitHub Releases](https://github.com/LissajousX/aireader/releases) and download the installer for your platform:
+
+| File | Platform |
+|:---|:---|
+| `Aireader_x.x.x_x64-setup.exe` | Windows x64 |
+| `Aireader_x.x.x_aarch64.dmg` | macOS Apple Silicon |
+| `Aireader_x.x.x_x64.dmg` | macOS Intel |
+| `Aireader_x.x.x_amd64.AppImage` | Linux x64 (Ubuntu 22.04+) |
+| `Aireader_x.x.x_amd64.deb` | Linux x64 (Debian / Ubuntu 22.04+) |
+| `Aireader_x.x.x_amd64-focal.AppImage` | Linux x64 (**Ubuntu 20.04**) |
+
+### Windows
+
+Double-click the `.exe` installer and follow the wizard. If Windows SmartScreen shows "Windows protected your PC", click **More info → Run anyway**.
+
+### macOS
+
+Open the `.dmg` file and drag Aireader into the Applications folder. If macOS warns "cannot verify the developer", go to **System Settings → Privacy & Security → Open Anyway**.
+
+### Linux (.deb)
+
+> **Important**: Use `apt` to install, **not** `dpkg -i`. `apt` automatically resolves dependencies (e.g. `libwebkit2gtk-4.1-0`), while `dpkg` does not.
+
+```bash
+sudo apt install ./Aireader_x.x.x_amd64.deb
+```
+
+If you already used `dpkg -i` and got dependency errors, fix it with:
+
+```bash
+sudo apt --fix-broken install
+```
+
+### Linux (.AppImage)
+
+```bash
+chmod +x Aireader_x.x.x_amd64.AppImage
+./Aireader_x.x.x_amd64.AppImage
+```
+
+Ubuntu 20.04 users should download the AppImage with `focal` in the filename.
+
+### Upgrade
+
+Download and run the new installer — it automatically overwrites the old version. Documents, notes, models and settings are preserved.
+
+---
+
 ## Key Features
 
 | Feature | Description |

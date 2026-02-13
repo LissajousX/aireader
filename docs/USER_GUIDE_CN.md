@@ -8,6 +8,58 @@
 
 **AiReader** 是一款面向深度阅读的桌面 AI 助手。支持 PDF、EPUB、Markdown 和 TXT 格式。核心理念：**选中文字即可翻译、解释，并将结果沉淀为笔记**。AI 推理完全在本地运行，你的文档永远不会离开你的电脑。
 
+## 下载与安装
+
+### 下载
+
+前往 [GitHub Releases](https://github.com/LissajousX/aireader/releases) 下载对应平台的安装包：
+
+| 文件 | 平台 |
+|:---|:---|
+| `Aireader_x.x.x_x64-setup.exe` | Windows x64 |
+| `Aireader_x.x.x_aarch64.dmg` | macOS Apple Silicon |
+| `Aireader_x.x.x_x64.dmg` | macOS Intel |
+| `Aireader_x.x.x_amd64.AppImage` | Linux x64 (Ubuntu 22.04+) |
+| `Aireader_x.x.x_amd64.deb` | Linux x64 (Debian / Ubuntu 22.04+) |
+| `Aireader_x.x.x_amd64-focal.AppImage` | Linux x64 (**Ubuntu 20.04**) |
+
+### Windows
+
+双击 `.exe` 安装包运行，按向导提示完成安装。如果系统提示"Windows 已保护你的电脑"，点击 **更多信息 → 仍要运行**。
+
+### macOS
+
+打开 `.dmg` 文件，将 Aireader 拖入 Applications 文件夹。首次打开如遇"无法验证开发者"提示，前往 **系统设置 → 隐私与安全性 → 仍要打开**。
+
+### Linux (.deb)
+
+> **重要**：请使用 `apt` 命令安装，不要使用 `dpkg -i`。`apt` 会自动解决依赖关系（如 `libwebkit2gtk-4.1-0`），而 `dpkg` 不会。
+
+```bash
+sudo apt install ./Aireader_x.x.x_amd64.deb
+```
+
+如果已经用 `dpkg -i` 安装导致依赖缺失，运行以下命令修复：
+
+```bash
+sudo apt --fix-broken install
+```
+
+### Linux (.AppImage)
+
+```bash
+chmod +x Aireader_x.x.x_amd64.AppImage
+./Aireader_x.x.x_amd64.AppImage
+```
+
+Ubuntu 20.04 用户请下载文件名带 `focal` 的 AppImage。
+
+### 升级
+
+下载新版安装包直接安装即可覆盖旧版本。文档、笔记、模型和设置均会保留。
+
+---
+
 ## 核心功能
 
 | 功能 | 说明 |
