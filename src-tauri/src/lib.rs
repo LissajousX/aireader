@@ -255,6 +255,58 @@ fn import_markdown_copy_impl(dest_dir: &Path, source_path: &str) -> Result<Strin
     Ok(dest_md_path.to_string_lossy().to_string())
 }
 
+/// Write a cleanup manifest for the uninstaller so it can show custom data paths
+/// to the user during uninstallation. Only paths OUTSIDE app_data_dir need special
+/// handling since the default NSIS uninstaller only removes $APPDATA\{BUNDLEID}.
+fn write_cleanup_manifest(
+    app_data_dir: &Path,
+    documents_dir: &Path,
+    models_dir: &Path,
+    dictionaries_dir: &Path,
+    llm_dir: &Path,
+    log_dir: &Path,
+) {
+    let manifest = serde_json::json!({
+        "app_data_dir": app_data_dir.to_string_lossy(),
+        "paths": [
+            {
+                "key": "documents",
+                "path": documents_dir.to_string_lossy(),
+                "label_cn": "文档库（已导入的文档副本、阅读进度）",
+                "label_en": "Document Library (imported copies, reading progress)"
+            },
+            {
+                "key": "models",
+                "path": models_dir.to_string_lossy(),
+                "label_cn": "AI 模型文件（.gguf，通常数 GB）",
+                "label_en": "AI Model Files (.gguf, typically several GB)"
+            },
+            {
+                "key": "dictionaries",
+                "path": dictionaries_dir.to_string_lossy(),
+                "label_cn": "离线词典数据（ECDICT / CC-CEDICT）",
+                "label_en": "Offline Dictionaries (ECDICT / CC-CEDICT)"
+            },
+            {
+                "key": "llm_runtime",
+                "path": llm_dir.to_string_lossy(),
+                "label_cn": "LLM 推理引擎（llama.cpp 运行时）",
+                "label_en": "LLM Runtime Engine (llama.cpp)"
+            },
+            {
+                "key": "logs",
+                "path": log_dir.to_string_lossy(),
+                "label_cn": "应用日志",
+                "label_en": "Application Logs"
+            }
+        ]
+    });
+    let manifest_path = app_data_dir.join("cleanup-manifest.json");
+    if let Ok(content) = serde_json::to_string_pretty(&manifest) {
+        let _ = std::fs::write(&manifest_path, content);
+    }
+}
+
 struct AppState {
     db: Arc<Database>,
     app_data_dir: PathBuf,
@@ -521,6 +573,16 @@ fn save_app_config(state: State<AppState>, config: AppConfigInput) -> Result<(),
     // Write config.json
     let content = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
     std::fs::write(&config_path, content).map_err(|e| e.to_string())?;
+
+    // Update cleanup manifest for uninstaller
+    write_cleanup_manifest(
+        &state.app_data_dir,
+        &state.documents_dir.read().unwrap(),
+        &state.models_dir.read().unwrap(),
+        &state.dictionaries_dir.read().unwrap(),
+        &state.llm_dir,
+        &state.log_dir,
+    );
 
     Ok(())
 }
@@ -927,6 +989,11 @@ pub fn run() {
             std::fs::create_dir_all(&dictionaries_dir).ok();
             std::fs::create_dir_all(&llm_dir).ok();
             // models_dir is created on demand (when downloading/listing models)
+            // Write cleanup manifest for uninstaller (lists all data dirs)
+            write_cleanup_manifest(
+                &app_data_dir, &documents_dir, &models_dir,
+                &dictionaries_dir, &llm_dir, &log_dir,
+            );
             // Auto-prepare dictionaries in background on first launch
             dictionary::auto_prepare_dictionaries(&app.handle(), &dictionaries_dir);
             // Auto-extract bundled CPU runtime on first launch
