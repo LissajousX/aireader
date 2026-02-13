@@ -13,6 +13,29 @@ use sysinfo::System;
 
 use crate::AppState;
 
+/// Detect whether the system glibc is too old for official llama.cpp binaries.
+/// Official Ubuntu binaries require GLIBC >= 2.34; Ubuntu 20.04 (focal) ships 2.31.
+/// When true, only bundled (self-compiled) runtimes should be used — no downloads.
+#[cfg(target_os = "linux")]
+fn is_bundled_runtime_only() -> bool {
+    use std::process::Command as StdCommand;
+    // `ldd --version` prints glibc version on the first line
+    if let Ok(out) = StdCommand::new("ldd").arg("--version").output() {
+        let first = String::from_utf8_lossy(&out.stdout);
+        // Parse version like "ldd (Ubuntu GLIBC 2.31-0ubuntu9) 2.31"
+        if let Some(ver) = first.split_whitespace().last() {
+            let parts: Vec<u32> = ver.split('.').filter_map(|s| s.parse().ok()).collect();
+            if parts.len() >= 2 {
+                let (major, minor) = (parts[0], parts[1]);
+                return major < 2 || (major == 2 && minor < 34);
+            }
+        }
+    }
+    false
+}
+#[cfg(not(target_os = "linux"))]
+fn is_bundled_runtime_only() -> bool { false }
+
 #[derive(Debug, Serialize)]
 pub struct BuiltinLlmStatus {
     #[serde(rename = "runtimeInstalled")]
@@ -1129,6 +1152,17 @@ async fn ensure_runtime_with_mode(app: &AppHandle, llm_dir: &Path, compute_mode:
                 return Ok(server);
             }
         }
+    }
+
+    // On systems with old glibc (e.g. Ubuntu 20.04), official llama.cpp binaries
+    // won't run. Only bundled runtimes are usable — skip the download entirely.
+    if is_bundled_runtime_only() {
+        return Err(format!(
+            "Bundled LLM runtime not found for {} / {}. This system (glibc < 2.34) \
+             cannot use downloaded runtimes — they were compiled for newer systems. \
+             Please re-install the application or contact support.",
+            compute_mode, gpu_backend
+        ));
     }
 
     // Fallback: download runtime archive and extract
@@ -2296,6 +2330,13 @@ pub fn builtin_llm_cancel_download(
 ) -> Result<(), String> {
     state.download_cancel.store(true, Ordering::Relaxed);
     Ok(())
+}
+
+/// Returns true if this system can only use bundled runtimes (no downloads).
+/// Frontend uses this to hide download-related UI on old-glibc systems.
+#[tauri::command]
+pub fn builtin_llm_is_bundled_only() -> bool {
+    is_bundled_runtime_only()
 }
 
 #[derive(Debug, Serialize)]

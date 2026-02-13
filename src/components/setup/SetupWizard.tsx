@@ -47,6 +47,12 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [recommendedModelId, setRecommendedModelId] = useState<string>('qwen3_0_6b_q4_k_m');
   const [selectedModelId, setSelectedModelId] = useState<string>('qwen3_0_6b_q4_k_m');
   const cancelledRef = useRef(false);
+  const [isBundledOnly, setIsBundledOnly] = useState(false);
+
+  // Detect bundled-only mode (old glibc, e.g. Ubuntu 20.04)
+  useEffect(() => {
+    invoke<boolean>('builtin_llm_is_bundled_only').then(v => setIsBundledOnly(v)).catch(() => {});
+  }, []);
 
   // Load current paths from backend
   useEffect(() => {
@@ -173,7 +179,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
       ));
       await invoke("builtin_llm_install", {
         options: {
-          modelId: benchModelId, mode: "auto",
+          modelId: benchModelId, mode: isBundledOnly ? "bundled_only" : "auto",
           computeMode: candidates[0].computeMode,
           gpuBackend: candidates[0].gpuBackend,
           cudaVersion: candidates[0].cudaVersion,

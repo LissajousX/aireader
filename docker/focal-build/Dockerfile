@@ -195,11 +195,16 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
     rustup target add x86_64-unknown-linux-gnu
 
 # ---------------------------------------------------------------------------
-# 7. AppImage bundling tools (linuxdeploy needs these at runtime)
+# 7. AppImage bundling tools + Vulkan SDK (for llama.cpp Vulkan build)
 # ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN wget -qO /tmp/lunarg-signing-key-pub.asc https://packages.lunarg.com/lunarg-signing-key-pub.asc && \
+    apt-key add /tmp/lunarg-signing-key-pub.asc && \
+    wget -qO /etc/apt/sources.list.d/lunarg-vulkan-focal.list \
+      https://packages.lunarg.com/vulkan/1.3.283/lunarg-vulkan-1.3.283-focal.list && \
+    apt-get update && apt-get install -y --no-install-recommends \
     file squashfs-tools libfuse2 \
-    && rm -rf /var/lib/apt/lists/*
+    libvulkan-dev vulkan-headers glslang-dev glslang-tools shaderc \
+    && rm -rf /var/lib/apt/lists/* /tmp/lunarg-signing-key-pub.asc
 
 # ---------------------------------------------------------------------------
 # 8. Final verification

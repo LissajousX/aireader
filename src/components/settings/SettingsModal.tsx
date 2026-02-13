@@ -111,12 +111,16 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<{ written: number; total: number | null; label: string; speed?: number | null } | null>(null);
   const [startedConfig, setStartedConfig] = useState<{ modelId: string; cm: string; gb: string; cv: string; gl: number } | null>(null);
+  const [isBundledOnly, setIsBundledOnly] = useState(false);
 
 
-  // Read app version from Tauri
+  // Read app version and bundled-only flag from Tauri
   useEffect(() => {
     if (isOpen && !appVersion) {
       invoke<string>('get_app_version').then(v => setAppVersion(v)).catch(() => setAppVersion(''));
+    }
+    if (isOpen) {
+      invoke<boolean>('builtin_llm_is_bundled_only').then(v => setIsBundledOnly(v)).catch(() => {});
     }
   }, [isOpen]);
 
@@ -466,8 +470,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
           gpuBackend: r.recommendedGpuBackend,
           cudaVersion: r.recommendedCudaVersion,
           modelUrl: builtinDownloadUrls[benchModelId] || undefined,
-          runtimeUrl: builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).rtKey] || undefined,
-          cudartUrl: builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).cudartKey ?? ''] || undefined,
+          runtimeUrl: isBundledOnly ? undefined : (builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).rtKey] || undefined),
+          cudartUrl: isBundledOnly ? undefined : (builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).cudartKey ?? ''] || undefined),
         },
         onProgress: createProgressChannel(),
       });
@@ -497,8 +501,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
             gpuBackend: r.recommendedGpuBackend,
             cudaVersion: r.recommendedCudaVersion,
             modelUrl: builtinDownloadUrls[finalModelId] || undefined,
-            runtimeUrl: builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).rtKey] || undefined,
-            cudartUrl: builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).cudartKey ?? ''] || undefined,
+            runtimeUrl: isBundledOnly ? undefined : (builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).rtKey] || undefined),
+            cudartUrl: isBundledOnly ? undefined : (builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).cudartKey ?? ''] || undefined),
           },
           onProgress: createProgressChannel(),
         });
@@ -514,8 +518,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
           gpuBackend: r.recommendedGpuBackend,
           gpuLayers: builtinGpuLayers,
           cudaVersion: r.recommendedCudaVersion,
-          runtimeUrl: builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).rtKey] || undefined,
-          cudartUrl: builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).cudartKey ?? ''] || undefined,
+          runtimeUrl: isBundledOnly ? undefined : (builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).rtKey] || undefined),
+          cudartUrl: isBundledOnly ? undefined : (builtinDownloadUrls[getRuntimeUrlKeys(r.recommendedComputeMode, r.recommendedGpuBackend, r.recommendedCudaVersion).cudartKey ?? ''] || undefined),
         },
         onProgress: createProgressChannel(),
       });
@@ -559,8 +563,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
           gpuBackend: builtinGpuBackend,
           cudaVersion: builtinCudaVersion,
           modelUrl: builtinDownloadUrls[nextModelId] || undefined,
-          runtimeUrl: builtinDownloadUrls[getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion).rtKey] || undefined,
-          cudartUrl: builtinDownloadUrls[getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion).cudartKey ?? ''] || undefined,
+          runtimeUrl: isBundledOnly ? undefined : (builtinDownloadUrls[getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion).rtKey] || undefined),
+          cudartUrl: isBundledOnly ? undefined : (builtinDownloadUrls[getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion).cudartKey ?? ''] || undefined),
         },
         onProgress: createProgressChannel(),
       });
@@ -574,8 +578,8 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
           gpuBackend: builtinGpuBackend,
           gpuLayers: builtinGpuLayers,
           cudaVersion: builtinCudaVersion,
-          runtimeUrl: builtinDownloadUrls[getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion).rtKey] || undefined,
-          cudartUrl: builtinDownloadUrls[getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion).cudartKey ?? ''] || undefined,
+          runtimeUrl: isBundledOnly ? undefined : (builtinDownloadUrls[getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion).rtKey] || undefined),
+          cudartUrl: isBundledOnly ? undefined : (builtinDownloadUrls[getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion).cudartKey ?? ''] || undefined),
         },
         onProgress: createProgressChannel(),
       });
@@ -767,7 +771,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       setBuiltinError(null);
       setBuiltinLoadingById((prev) => ({ ...prev, [modelId]: true }));
       const { rtKey, cudartKey } = getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion);
-      await invoke<any>("builtin_llm_install", { options: { modelId, mode: "auto", computeMode: builtinComputeMode, gpuBackend: builtinGpuBackend, cudaVersion: builtinCudaVersion, modelUrl: builtinDownloadUrls[modelId] || undefined, runtimeUrl: builtinDownloadUrls[rtKey] || undefined, cudartUrl: builtinDownloadUrls[cudartKey ?? ''] || undefined }, onProgress: createProgressChannel() });
+      await invoke<any>("builtin_llm_install", { options: { modelId, mode: "auto", computeMode: builtinComputeMode, gpuBackend: builtinGpuBackend, cudaVersion: builtinCudaVersion, modelUrl: builtinDownloadUrls[modelId] || undefined, runtimeUrl: isBundledOnly ? undefined : (builtinDownloadUrls[rtKey] || undefined), cudartUrl: isBundledOnly ? undefined : (builtinDownloadUrls[cudartKey ?? ''] || undefined) }, onProgress: createProgressChannel() });
       await refreshBuiltinStatus();
     } catch (error) {
       console.error("builtin_llm_install failed:", error);
@@ -813,7 +817,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       setRuntimeInstalling(true);
       setDownloadProgress(null);
       const { rtKey: irKey, cudartKey: icKey } = getRuntimeUrlKeys(builtinComputeMode, builtinGpuBackend, builtinCudaVersion);
-      await invoke<void>("builtin_llm_install_runtime", { options: { computeMode: builtinComputeMode, gpuBackend: builtinGpuBackend, cudaVersion: builtinCudaVersion, runtimeUrl: builtinDownloadUrls[irKey] || undefined, cudartUrl: builtinDownloadUrls[icKey ?? ''] || undefined }, onProgress: createProgressChannel() });
+      await invoke<void>("builtin_llm_install_runtime", { options: { computeMode: builtinComputeMode, gpuBackend: builtinGpuBackend, cudaVersion: builtinCudaVersion, runtimeUrl: isBundledOnly ? undefined : (builtinDownloadUrls[irKey] || undefined), cudartUrl: isBundledOnly ? undefined : (builtinDownloadUrls[icKey ?? ''] || undefined) }, onProgress: createProgressChannel() });
       await refreshBuiltinStatus();
     } catch (error) {
       console.error("builtin_llm_install_runtime failed:", error);
@@ -1945,39 +1949,50 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                       )}
                     </div>
 
-                    {/* Runtime Tools */}
-                    <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider pt-1">{b('运行时工具', 'Runtime Tools')}</div>
-                    {(() => {
-                      const platform = detectPlatform();
-                      return RUNTIME_ENTRIES
-                        .filter((e: typeof RUNTIME_ENTRIES[number]) => e.urls[platform] != null)
-                        .map((e: typeof RUNTIME_ENTRIES[number]) => {
-                          const urls = e.urls[platform]!;
-                          return (
-                            <div key={e.key} className="space-y-1">
-                              <div className="flex items-center justify-between">
-                                <label className="text-xs font-medium">{e.label}</label>
-                                {builtinDownloadUrls[e.key] && (
-                                  <Button variant="ghost" size="sm" onClick={() => { resetBuiltinDownloadUrl(e.key); saveSettings(); }} className="h-5 px-1.5 text-[11px]">
-                                    <RotateCcw className="w-2.5 h-2.5 mr-0.5" />{b('重置', 'Reset')}
-                                  </Button>
-                                )}
-                              </div>
-                              <input
-                                type="text"
-                                value={builtinDownloadUrls[e.key] || ''}
-                                onChange={(ev) => { setBuiltinDownloadUrl(e.key, ev.target.value); saveSettings(); }}
-                                placeholder={urls[0]}
-                                disabled={isAnyBusy}
-                                className="w-full px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-[11px] font-mono placeholder:text-muted-foreground/40 disabled:opacity-50"
-                              />
-                              <div className="text-[10px] text-muted-foreground/60 font-mono truncate" title={urls[1]}>
-                                {b('备用', 'Alt')}: {urls[1]}
-                              </div>
-                            </div>
-                          );
-                        });
-                    })()}
+                    {/* Runtime Tools — hidden on bundled-only systems (e.g. Ubuntu 20.04) */}
+                    {isBundledOnly ? (
+                      <div className="text-[11px] text-amber-600 bg-amber-500/10 rounded-lg p-2.5 leading-relaxed">
+                        {b(
+                          '当前系统使用内置运行时（glibc < 2.34），运行时下载已禁用。如需更换运行时请重新安装应用。',
+                          'This system uses bundled runtimes (glibc < 2.34). Runtime downloads are disabled. Reinstall the app to update runtimes.'
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider pt-1">{b('运行时工具', 'Runtime Tools')}</div>
+                        {(() => {
+                          const platform = detectPlatform();
+                          return RUNTIME_ENTRIES
+                            .filter((e: typeof RUNTIME_ENTRIES[number]) => e.urls[platform] != null)
+                            .map((e: typeof RUNTIME_ENTRIES[number]) => {
+                              const urls = e.urls[platform]!;
+                              return (
+                                <div key={e.key} className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <label className="text-xs font-medium">{e.label}</label>
+                                    {builtinDownloadUrls[e.key] && (
+                                      <Button variant="ghost" size="sm" onClick={() => { resetBuiltinDownloadUrl(e.key); saveSettings(); }} className="h-5 px-1.5 text-[11px]">
+                                        <RotateCcw className="w-2.5 h-2.5 mr-0.5" />{b('重置', 'Reset')}
+                                      </Button>
+                                    )}
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={builtinDownloadUrls[e.key] || ''}
+                                    onChange={(ev) => { setBuiltinDownloadUrl(e.key, ev.target.value); saveSettings(); }}
+                                    placeholder={urls[0]}
+                                    disabled={isAnyBusy}
+                                    className="w-full px-3 py-1.5 border border-border rounded-lg bg-background text-foreground text-[11px] font-mono placeholder:text-muted-foreground/40 disabled:opacity-50"
+                                  />
+                                  <div className="text-[10px] text-muted-foreground/60 font-mono truncate" title={urls[1]}>
+                                    {b('备用', 'Alt')}: {urls[1]}
+                                  </div>
+                                </div>
+                              );
+                            });
+                        })()}
+                      </>
+                    )}
 
                     <div className="border-t border-border/30 my-1" />
 
