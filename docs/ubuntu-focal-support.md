@@ -169,9 +169,9 @@ pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 ### 自动化测试
 
-- **Rust 单元测试**：32 个测试覆盖 `builtin_llm` 模块（模型路径、运行时目录、bundled-only 逻辑等）
+- **Rust 单元测试**：58 个测试（builtin_llm 37 + database 9 + epub 12），覆盖 glibc 检测、LD_LIBRARY_PATH、bundled-only 逻辑、模型管理等
+- **前端测试**：263 个测试（15 个测试文件），覆盖 polyfill、下载配置、UI 组件等
 - **TypeScript 编译**：`npx tsc --noEmit` 在 focal Docker 中通过
-- **回归测试**：11 个测试确保 bundled-only 模式不影响模型下载
 
 ### Docker 端到端验证
 

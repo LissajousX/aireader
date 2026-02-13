@@ -87,6 +87,8 @@ npm run tauri build  # 构建发布版
 ```
 aireader/
 ├── src/                        # React 前端
+│   ├── polyfills.ts            # ES2024 polyfill (Promise.withResolvers 等)
+│   ├── main.tsx                # 入口文件
 │   ├── components/
 │   │   ├── ai/                 # AI 面板 & 上下文对话
 │   │   ├── layout/             # 侧边栏、欢迎页、文档库
@@ -106,13 +108,16 @@ aireader/
 │   │   ├── dictionary.rs       # ECDICT / CC-CEDICT 词典
 │   │   ├── epub.rs             # EPUB 解析
 │   │   └── ollama.rs           # Ollama 代理
-│   ├── resources/              # 词典 & 示例文档
+│   ├── resources/              # 词典、示例文档 & 卸载清理脚本
+│   ├── windows/                # NSIS 安装器钩子 (Windows)
 │   └── Cargo.toml
+├── docker/                     # 构建环境
+│   └── focal-build/            # Ubuntu 20.04 专用 Docker 镜像
 ├── docs/                       # 文档
 │   ├── README_EN.md            # English README
-│   ├── USER_GUIDE.md           # 用户指南 (双语合并版)
 │   ├── USER_GUIDE_CN.md        # 用户指南 (中文)
-│   └── USER_GUIDE_EN.md        # User Guide (English)
+│   ├── USER_GUIDE_EN.md        # User Guide (English)
+│   └── releases/               # 版本发布说明
 ├── screenshots/                # 截图
 └── package.json
 ```

@@ -87,6 +87,8 @@ npm run tauri build  # Build for production
 ```
 aireader/
 ├── src/                        # React frontend
+│   ├── polyfills.ts            # ES2024 polyfill (Promise.withResolvers etc.)
+│   ├── main.tsx                # Entry point
 │   ├── components/
 │   │   ├── ai/                 # AI panel & contextual chat
 │   │   ├── layout/             # Sidebar, welcome, document library
@@ -106,13 +108,16 @@ aireader/
 │   │   ├── dictionary.rs       # ECDICT / CC-CEDICT dictionary
 │   │   ├── epub.rs             # EPUB extraction
 │   │   └── ollama.rs           # Ollama proxy
-│   ├── resources/              # Dictionaries & sample documents
+│   ├── resources/              # Dictionaries, samples & cleanup script
+│   ├── windows/                # NSIS installer hooks (Windows)
 │   └── Cargo.toml
+├── docker/                     # Build environments
+│   └── focal-build/            # Ubuntu 20.04 dedicated Docker image
 ├── docs/                       # Documentation
 │   ├── README_EN.md            # English README
-│   ├── USER_GUIDE.md           # User Guide (bilingual)
 │   ├── USER_GUIDE_CN.md        # 用户指南 (中文)
-│   └── USER_GUIDE_EN.md        # User Guide (English)
+│   ├── USER_GUIDE_EN.md        # User Guide (English)
+│   └── releases/               # Release notes
 ├── screenshots/                # Screenshots
 └── package.json
 ```
