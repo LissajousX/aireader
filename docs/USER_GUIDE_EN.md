@@ -289,7 +289,7 @@ Use "Downgrade to smaller model" in Simple Mode, or select manually in Advanced 
 Download and run the new installer. Automatic overwrite, data preserved.
 
 **Q: White screen on Linux in a virtual machine?**
-This is caused by WebKitGTK GPU compositing failing in VMs. Since v1.1.0, the app auto-detects VM environments and disables GPU compositing. If you still get a white screen, launch with: `WEBKIT_DISABLE_COMPOSITING_MODE=1 aireader`
+This is caused by WebKitGTK GPU compositing failing in VMs. After v1.1.0, the app auto-detects VM environments and disables GPU will composite. If you still get a white screen, launch with: `WEBKIT_DISABLE_COMPOSITING_MODE=1 aireader`
 
 **Q: Is there a dedicated version for Ubuntu 20.04?**
 Yes. Starting from v1.1.0, a dedicated focal AppImage is available with self-compiled llama.cpp runtime that doesn't require newer glibc. Download the AppImage with `focal` in the filename.
